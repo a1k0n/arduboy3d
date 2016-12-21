@@ -40,16 +40,38 @@ void FillVLine(uint8_t y0, uint8_t y1, uint8_t pattern, uint8_t *screenptr) {
 
 // draw triangle into screen buffer
 // 4 bits of subpixel accuracy, so screen is 128*16 x 64*16 = 2048x1024
-// assumes x0 is on the left, x1 middle, x2 right, winding-order independent
 // does not detect bad triangles or clip (yet)
 void FillTriangle(
     uint16_t x0, uint16_t y0,
     uint16_t x1, uint16_t y1,
     uint16_t x2, uint16_t y2,
     uint8_t *pattern, uint8_t *screen) {
-  // basic assumption: y1 < y0 + (y2-y0)*(x1-x0)/(x2-x0)
-  // maybe we can relax that assumption
-  // so we want to fill in pixels which are *inside* the triangle
+  // sort coordinates by x w/ optimal 3-sorting network
+  {
+    uint16_t t;
+    if (x0 > x1) {
+      t = x1; x1 = x0; x0 = t;
+      t = y1; y1 = y0; y0 = t;
+    }
+    if (x1 > x2) {
+      t = x2; x2 = x1; x1 = t;
+      t = y2; y2 = y1; y1 = t;
+    }
+    if (x0 > x1) {
+      t = x1; x1 = x0; x0 = t;
+      t = y1; y1 = y0; y0 = t;
+    }
+  }
+
+  // proof:
+  //   012 ...
+  //   021 .!012.
+  //   102 !012..
+  //   120 .!102!012
+  //   201 !021!012.
+  //   210 !120!102!012
+
+  // we want to fill in pixels which are *inside* the triangle
   // first we need to bump from x0,y0 to the next whole x (as x0 is fractional)
 
   // we can use the standard ddx algorithm, with a pre-divided whole part
@@ -61,10 +83,8 @@ void FillTriangle(
   uint16_t dx01 = x1 - x0;
   uint16_t dx02 = x2 - x0;
 
-  uint16_t yt = y0 >> 4, yb = y0 >> 4;  // top and bottom y
+  uint8_t yt = y0 >> 4, yb = y0 >> 4;  // top and bottom y
   int16_t ytf = y0 & 15, ybf = y0 & 15;
-
-  printf("init x0: %d yt: %d %d yb: %d %d\n", x0, yt, ytf, yb, ybf);
 
   // now we need to advance to the next whole pixel ((x0 + 15) & ~15)
   // update yt, ytf along the slope of (dy01/dx01) for x0 - ((x0 + 15) & ~15) steps
@@ -84,7 +104,6 @@ void FillTriangle(
     x0 += dx0;
   }
 
-  printf("bumped x0: %d yt: %d %d yb: %d %d\n", x0, yt, ytf, yb, ybf);
   // x0 is now aligned to a whole number of pixels, and yt/yb/ytf/ybf are initialized
   int16_t dy01 = (y1 - y0) / dx01;  // FIXME: does this generate combined divmod?
   int16_t fy01 = (y1 - y0) % dx01;
@@ -198,8 +217,8 @@ int main() {
   uint8_t pat2[] = {0x11, 0x00, 0x44, 0x00};
   FillTriangle(
       15, 16*48,
-      48*16 + 8, 16*63,
       127*16, 16*64,
+      48*16 + 8, 16*63,
       pat2, screen);
 
   PrintScreen(screen);
