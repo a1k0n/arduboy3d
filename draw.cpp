@@ -1,17 +1,30 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <avr/pgmspace.h>
+
+/*
+#ifndef PROGMEM
+#define PROGMEM
+#define pgm_read_byte_near(x) (*(x))
+#endif
+*/
 
 // since the AVR has no barrel shifter, we'll do a progmem lookup
-const uint8_t topmask_[] = {0xff, 0xfe, 0xfc, 0xf8, 0xf0, 0xe0, 0xc0, 0x80};
-const uint8_t bottommask_[] = {0x01, 0x03, 0x07, 0x0f, 0x1f, 0x3f, 0x7f, 0xff};
+const uint8_t topmask_[] PROGMEM = {
+  0xff, 0xfe, 0xfc, 0xf8, 0xf0, 0xe0, 0xc0, 0x80};
+const uint8_t bottommask_[] PROGMEM = {
+  0x01, 0x03, 0x07, 0x0f, 0x1f, 0x3f, 0x7f, 0xff};
 
-// 16-level 4x4 dither matrix, colors 0..16
-const uint8_t dither_[] = {0, 0, 0, 0, 17, 0, 0, 0, 17, 0, 68, 0, 85, 0, 68, 0,
-  85, 0, 85, 0, 85, 34, 85, 0, 85, 34, 85, 136, 85, 170, 85, 136, 85, 170, 85,
-  170, 119, 170, 85, 170, 119, 170, 221, 170, 255, 170, 221, 170, 255, 170,
-  255, 170, 255, 187, 255, 170, 255, 187, 255, 238, 255, 255, 255, 238, 255,
-  255, 255, 255};
+// 16-level 4x4 dither matrix, colors 0..16 (black, white, and 15 between)
+const uint8_t dither_[] PROGMEM = {
+  0x00, 0x00, 0x00, 0x00, 0x11, 0x00, 0x00, 0x00, 0x11, 0x00, 0x44, 0x00,
+  0x55, 0x00, 0x44, 0x00, 0x55, 0x00, 0x55, 0x00, 0x55, 0x22, 0x55, 0x00,
+  0x55, 0x22, 0x55, 0x88, 0x55, 0xaa, 0x55, 0x88, 0x55, 0xaa, 0x55, 0xaa,
+  0x77, 0xaa, 0x55, 0xaa, 0x77, 0xaa, 0xdd, 0xaa, 0xff, 0xaa, 0xdd, 0xaa,
+  0xff, 0xaa, 0xff, 0xaa, 0xff, 0xbb, 0xff, 0xaa, 0xff, 0xbb, 0xff, 0xee,
+  0xff, 0xff, 0xff, 0xee, 0xff, 0xff, 0xff, 0xff
+};
 
 // fill a vertical line from y0 to y1, inclusive, with bitmask pattern
 // does not tolerate y1 < y0
@@ -20,11 +33,12 @@ void FillVLine(uint8_t y0, uint8_t y1, uint8_t pattern, uint8_t *screenptr) {
   uint8_t *page0 = screenptr + ((y0 >> 3) << 7);  // check: does avr-gcc optimize this?
   uint8_t *page1 = screenptr + ((y1 >> 3) << 7);
   if (page0 == page1) {
-    uint8_t mask = topmask_[y0&7] & bottommask_[y1&7];
+    uint8_t mask = pgm_read_byte_near(topmask_ + (y0&7))
+      & pgm_read_byte_near(bottommask_ + (y1&7));
     *page0 &= ~mask;
     *page0 |= pattern & mask;
   } else {
-    uint8_t mask = topmask_[y0&7];
+    uint8_t mask = pgm_read_byte_near(topmask_ + (y0&7));
     *page0 &= ~mask;
     *page0 |= pattern & mask;
     page0 += 128;
@@ -32,10 +46,22 @@ void FillVLine(uint8_t y0, uint8_t y1, uint8_t pattern, uint8_t *screenptr) {
       *page0 = pattern;
       page0 += 128;
     }
-    mask = bottommask_[y1&7];
+    mask = pgm_read_byte_near(bottommask_ + (y1&7));
     *page0 &= ~mask;
     *page0 |= pattern & mask;
   }
+}
+
+// get a dither pattern from color 0 to 16 (inclusive)
+void GetDitherPattern(int8_t color, uint8_t *pattern) {
+  if (color < 0) color = 0;
+  if (color > 16) color = 16;
+  color *= 4;
+  // unroll to pgm_read_word?
+  pattern[0] = pgm_read_byte_near(dither_ + color);
+  pattern[1] = pgm_read_byte_near(dither_ + color + 1);
+  pattern[2] = pgm_read_byte_near(dither_ + color + 2);
+  pattern[3] = pgm_read_byte_near(dither_ + color + 3);
 }
 
 // draw triangle into screen buffer
@@ -173,6 +199,7 @@ void FillTriangle(
   }
 }
 
+#if 0
 void PrintScreen(uint8_t *screen) {
   for (int page = 0; page < 8; page++) {
     uint8_t mask = 0x01;
@@ -202,7 +229,8 @@ int main() {
     screen[128*4+i] = 0xff;
   }
   for (int i = 0; i < 16; i++) {
-    FillVLine(i, 37-i, dither_[8*4 + i], screen+i + 18);
+    FillVLine(i, 37-i, pgm_read_byte_near(dither_ + 8*4 + i),
+        screen+i + 18);
   }
 
   uint8_t pat[] = {0xff, 0xff, 0xff, 0xff};
@@ -223,4 +251,5 @@ int main() {
 
   PrintScreen(screen);
 }
+#endif
 

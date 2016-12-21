@@ -16,4 +16,4 @@ masks = []
 for i in range(17):
     masks.extend(bitmasks(pattern, i))
 
-print masks
+print ', '.join(["0x%02x" % m for m in masks])
