@@ -40,7 +40,8 @@ void FillVLine(uint8_t y0, uint8_t y1, uint8_t pattern, uint8_t *screenptr) {
 
 // draw triangle into screen buffer
 // 4 bits of subpixel accuracy, so screen is 128*16 x 64*16 = 2048x1024
-// assumes clockwise winding order, does not detect bad triangles or clip (yet)
+// assumes x0 is on the left, x1 middle, x2 right, winding-order independent
+// does not detect bad triangles or clip (yet)
 void FillTriangle(
     uint16_t x0, uint16_t y0,
     uint16_t x1, uint16_t y1,
@@ -97,7 +98,11 @@ void FillTriangle(
   // step along exactly (x1-x0) / 16 pixels and we should be just short of x1
   while (x0 < x1) {
     // now, we include the bottom pixel if ybf != 0, otherwise we don't
-    FillVLine(yt, yb - (ybf == 0 ? 1 : 0), pattern[pattern_offset], screen);
+    if (yt < yb) {
+      FillVLine(yt, yb - (ybf == 0 ? 1 : 0), pattern[pattern_offset], screen);
+    } else {
+      FillVLine(yb, yt - (ytf == 0 ? 1 : 0), pattern[pattern_offset], screen);
+    }
     yt += dy01;
     ytf += fy01;
     if (ytf < 0) { yt--; ytf += dx01; }
@@ -125,11 +130,14 @@ void FillTriangle(
     yt += dyt / dx12;
     ytf += dyt % dx12;
   }
-  printf("bumped x0 past x1: %d yt: %d %d %d %d yb: %d %d\n", x0, yt, ytf, dy12, fy12, yb, ybf);
   // draw 2nd trapezoid
   while (x0 < x2) {
     // now, we include the bottom pixel if ybf != 0, otherwise we don't
-    FillVLine(yt, yb - (ybf == 0 ? 1 : 0), pattern[pattern_offset], screen);
+    if (yt < yb) {
+      FillVLine(yt, yb - (ybf == 0 ? 1 : 0), pattern[pattern_offset], screen);
+    } else {
+      FillVLine(yb, yt - (ytf == 0 ? 1 : 0), pattern[pattern_offset], screen);
+    }
     yt += dy12;
     ytf += fy12;
     if (ytf < 0) { yt--; ytf += dx12; }
@@ -184,6 +192,15 @@ int main() {
       48*16 + 8, 16*33 - 1,
       127*16, 16*64,
       pat, screen);
+
+  PrintScreen(screen);
+
+  uint8_t pat2[] = {0x11, 0x00, 0x44, 0x00};
+  FillTriangle(
+      15, 16*48,
+      48*16 + 8, 16*63,
+      127*16, 16*64,
+      pat2, screen);
 
   PrintScreen(screen);
 }
