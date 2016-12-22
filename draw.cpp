@@ -1,5 +1,4 @@
 #include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 #include <avr/pgmspace.h>
 
@@ -68,9 +67,9 @@ void GetDitherPattern(int8_t color, uint8_t *pattern) {
 // 4 bits of subpixel accuracy, so screen is 128*16 x 64*16 = 2048x1024
 // does not detect bad triangles or clip (yet)
 void FillTriangle(
-    uint16_t x0, uint16_t y0,
-    uint16_t x1, uint16_t y1,
-    uint16_t x2, uint16_t y2,
+    int16_t x0, int16_t y0,
+    int16_t x1, int16_t y1,
+    int16_t x2, int16_t y2,
     uint8_t *pattern, uint8_t *screen) {
   // sort coordinates by x w/ optimal 3-sorting network
   {
@@ -106,8 +105,8 @@ void FillTriangle(
   // FIXME: optimize tiny triangle cases, as they are common
 
   // first trapezoid: x0 to x1, the p0-p1 line above the p0-p2 line (clockwise)
-  uint16_t dx01 = x1 - x0;
-  uint16_t dx02 = x2 - x0;
+  int16_t dx01 = x1 - x0;
+  int16_t dx02 = x2 - x0;
 
   uint8_t yt = y0 >> 4, yb = y0 >> 4;  // top and bottom y
   int16_t ytf = y0 & 15, ybf = y0 & 15;
@@ -119,7 +118,7 @@ void FillTriangle(
   // yt/ytf are stored in fractions of (x1-x0)
   // so
   {
-    uint16_t dx0 = ((x0 + 15) & ~15) - x0;
+    int16_t dx0 = ((x0 + 15) & ~15) - x0;
     int16_t dyt = dx0 * (y1 - y0) >> 4;
     yt += dyt / dx01;
     ytf += dyt % dx01;
@@ -165,12 +164,12 @@ void FillTriangle(
   // now x0 > x1, we went slightly too far.
   yt = y1 >> 4;  // new top y
   ytf = y1 & 15;  // .. and fractional part
-  uint16_t dx12 = x2 - x1;
+  int16_t dx12 = x2 - x1;
   int16_t dy12 = (y2 - y1) / dx12;
   int16_t fy12 = (y2 - y1) % dx12;
   // we need to adjust yt, ytf for the new slope of (y2-y1)/(x2-x1)
   {
-    uint16_t dx0 = x0 - x1;
+    int16_t dx0 = x0 - x1;
     int16_t dyt = dx0 * (y2 - y1) >> 4;
     yt += dyt / dx12;
     ytf += dyt % dx12;
