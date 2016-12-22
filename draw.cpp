@@ -29,6 +29,11 @@ const uint8_t dither_[] PROGMEM = {
 // does not tolerate y1 < y0
 void FillVLine(uint8_t y0, uint8_t y1, uint8_t pattern, uint8_t *screenptr) {
   if (y1 < y0) return;
+
+  // clip (FIXME; clipping should be handled elsewhere)
+  if (y0 < 0) y0 = 0;
+  if (y1 > 63) y1 = 63;
+
   uint8_t *page0 = screenptr + ((y0 >> 3) << 7);  // check: does avr-gcc optimize this?
   uint8_t *page1 = screenptr + ((y1 >> 3) << 7);
   if (page0 == page1) {
