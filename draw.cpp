@@ -27,8 +27,8 @@ const uint8_t dither_[] PROGMEM = {
 
 // fill a vertical line from y0 to y1, inclusive, with bitmask pattern
 // does not tolerate y1 < y0
-void FillVLine(uint8_t y0, uint8_t y1, uint8_t pattern, uint8_t *screenptr) {
-  if (y1 < y0) return;
+void FillVLine(int8_t y0, int8_t y1, uint8_t pattern, uint8_t *screenptr) {
+  if (y1 < y0 || y1 < 0 || y0 > 63) return;
 
   // clip (FIXME; clipping should be handled elsewhere)
   if (y0 < 0) y0 = 0;
@@ -78,7 +78,7 @@ void FillTriangle(
     uint8_t *pattern, uint8_t *screen) {
   // sort coordinates by x w/ optimal 3-sorting network
   {
-    uint16_t t;
+    int16_t t;
     if (x0 > x1) {
       t = x1; x1 = x0; x0 = t;
       t = y1; y1 = y0; y0 = t;
@@ -113,7 +113,7 @@ void FillTriangle(
   int16_t dx01 = x1 - x0;
   int16_t dx02 = x2 - x0;
 
-  uint8_t yt = y0 >> 4, yb = y0 >> 4;  // top and bottom y
+  int8_t yt = y0 >> 4, yb = y0 >> 4;  // top and bottom y
   int16_t ytf = y0 & 15, ybf = y0 & 15;
 
   // now we need to advance to the next whole pixel ((x0 + 15) & ~15)
@@ -139,7 +139,7 @@ void FillTriangle(
   int16_t fy01 = (y1 - y0) % dx01;
   int16_t dy02 = (y2 - y0) / dx02;
   int16_t fy02 = (y2 - y0) % dx02;
-  uint8_t x = x0 >> 4;
+  int8_t x = x0 >> 4;
   uint8_t pattern_offset = x & 3;
   screen += x;
   // so technically we are downsampling both dy and dx here by a factor of 16,
