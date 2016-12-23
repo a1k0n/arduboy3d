@@ -75,17 +75,35 @@ void DrawOctahedron() {
   static float A = 0, A_target = 10;
   static float B = 0, B_target = 10;
   static const float kTurnSpeed = 0.1;
-  if (arduboy_.pressed(LEFT_BUTTON)) {
-    B_target -= kTurnSpeed;
-  }
-  if (arduboy_.pressed(RIGHT_BUTTON)) {
-    B_target += kTurnSpeed;
-  }
-  if (arduboy_.pressed(UP_BUTTON)) {
-    A_target -= kTurnSpeed;
-  }
-  if (arduboy_.pressed(DOWN_BUTTON)) {
-    A_target += kTurnSpeed;
+  static float scale = 2448;
+  static float distance = 4;
+
+  if (arduboy_.pressed(A_BUTTON)) {
+    if (arduboy_.pressed(LEFT_BUTTON)) {
+      scale -= 10;
+    }
+    if (arduboy_.pressed(RIGHT_BUTTON)) {
+      scale += 10;
+    }
+    if (arduboy_.pressed(UP_BUTTON)) {
+      distance += 0.01;
+    }
+    if (arduboy_.pressed(DOWN_BUTTON)) {
+      distance -= 0.01;
+    }
+  } else {
+    if (arduboy_.pressed(LEFT_BUTTON)) {
+      B_target -= kTurnSpeed;
+    }
+    if (arduboy_.pressed(RIGHT_BUTTON)) {
+      B_target += kTurnSpeed;
+    }
+    if (arduboy_.pressed(UP_BUTTON)) {
+      A_target -= kTurnSpeed;
+    }
+    if (arduboy_.pressed(DOWN_BUTTON)) {
+      A_target += kTurnSpeed;
+    }
   }
 
   A += (A_target - A) * 0.01;
@@ -104,15 +122,15 @@ void DrawOctahedron() {
           p1(f&2 ? Fy : -Fy),
           p2(f&4 ? Fz : -Fz);
     Vec2f s0, s1, s2;
-    p0.project(2448, 4, &s0);
+    p0.project(scale, distance, &s0);
     // for each flipped axis, flip the "parity" so we generate a consistent
     // clockwise winding order on each face
     if ((f ^ (f>>1) ^ (f>>2)) & 1) {
-      p1.project(2448, 4, &s1);
-      p2.project(2448, 4, &s2);
+      p1.project(scale, distance, &s1);
+      p2.project(scale, distance, &s2);
     } else {
-      p1.project(2448, 4, &s2);
-      p2.project(2448, 4, &s1);
+      p1.project(scale, distance, &s2);
+      p2.project(scale, distance, &s1);
     }
     // check winding order in screen space, cull back faces
     if (!CheckWinding(s0, s1, s2)) {
@@ -156,6 +174,17 @@ Stars stars_;
 void loop() {
   if (arduboy_.nextFrame()) {
     stars_.Draw();
+#if 0
+    // big polygon clipping test
+    uint8_t pat[] = {0xff, 0xff, 0xff, 0xff};
+    int16_t x = ((frame_ & 511) - 256) * 16;
+    FillTriangle(
+        -1024 - x, 32*16,
+        - x, -512,
+        1024 - x, 1023,
+        pat, screen_);
+#endif
+
     DrawOctahedron();
     arduboy_.display(true);
     ++frame_;

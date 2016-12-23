@@ -1,1 +1,2 @@
-add_executable(draw draw.cc)
+add_definitions(-DTEST_)
+add_executable(draw draw.cpp)

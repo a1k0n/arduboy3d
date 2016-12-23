@@ -1,13 +1,16 @@
 #include <stdint.h>
 #include <string.h>
-#include <avr/pgmspace.h>
 
-/*
+#ifndef TEST_
+#include <avr/pgmspace.h>
+#else
+
+#include <stdio.h>
 #ifndef PROGMEM
 #define PROGMEM
 #define pgm_read_byte_near(x) (*(x))
 #endif
-*/
+#endif  // TEST_
 
 // since the AVR has no barrel shifter, we'll do a progmem lookup
 const uint8_t topmask_[] PROGMEM = {
@@ -27,15 +30,17 @@ const uint8_t dither_[] PROGMEM = {
 
 // fill a vertical line from y0 to y1, inclusive, with bitmask pattern
 // does not tolerate y1 < y0
-void FillVLine(int8_t y0, int8_t y1, uint8_t pattern, uint8_t *screenptr) {
-  if (y1 < y0 || y1 < 0 || y0 > 63) return;
+void FillVLine(int8_t y0_, int8_t y1_, uint8_t pattern, uint8_t *screenptr) {
+  if (y1_ < y0_ || y1_ < 0 || y0_ > 63) return;
 
   // clip (FIXME; clipping should be handled elsewhere)
-  if (y0 < 0) y0 = 0;
-  if (y1 > 63) y1 = 63;
+  // cast to unsigned after clipping to simplify generated code below
+  uint8_t y0 = y0_, y1 = y1_;
+  if (y0_ < 0) y0 = 0;
+  if (y1_ > 63) y1 = 63;
 
-  uint8_t *page0 = screenptr + ((y0 >> 3) << 7);  // check: does avr-gcc optimize this?
-  uint8_t *page1 = screenptr + ((y1 >> 3) << 7);
+  uint8_t *page0 = screenptr + ((y0 & 0x38) << 4);
+  uint8_t *page1 = screenptr + ((y1 & 0x38) << 4);
   if (page0 == page1) {
     uint8_t mask = pgm_read_byte_near(topmask_ + (y0&7))
       & pgm_read_byte_near(bottommask_ + (y1&7));
@@ -70,7 +75,7 @@ void GetDitherPattern(int8_t color, uint8_t *pattern) {
 
 // draw triangle into screen buffer
 // 4 bits of subpixel accuracy, so screen is 128*16 x 64*16 = 2048x1024
-// does not detect bad triangles or clip (yet)
+// does efficient left-right clipping, and unoptimized top-bottom clipping
 void FillTriangle(
     int16_t x0, int16_t y0,
     int16_t x1, int16_t y1,
@@ -92,29 +97,26 @@ void FillTriangle(
       t = y1; y1 = y0; y0 = t;
     }
   }
-
-  // proof:
-  //   012 ...
-  //   021 .!012.
-  //   102 !012..
-  //   120 .!102!012
-  //   201 !021!012.
-  //   210 !120!102!012
+  if (x2 <= 0 || x0 > 127*16) {  // entire triangle is off screen
+    return;
+  }
 
   // we want to fill in pixels which are *inside* the triangle
-  // first we need to bump from x0,y0 to the next whole x (as x0 is fractional)
+  // first we need to bump from x0,y0 to the next whole x (as x0 is
+  // fractional)
 
   // we can use the standard ddx algorithm, with a pre-divided whole part
   // (normally assumed to be 0 in bresenham's)
 
-  // FIXME: optimize tiny triangle cases, as they are common
-
-  // first trapezoid: x0 to x1, the p0-p1 line above the p0-p2 line (clockwise)
+  // first trapezoid: x0 to x1
   int16_t dx01 = x1 - x0;
   int16_t dx02 = x2 - x0;
 
-  int8_t yt = y0 >> 4, yb = y0 >> 4;  // top and bottom y
-  int16_t ytf = y0 & 15, ybf = y0 & 15;
+  // the top and bottom variable names are a misnomer, as they can also
+  // be inverted. the "upside down" case is handled by checking in the
+  // inner loop; ideally that would be a separate branch here.
+  int8_t yt = y0 >> 4, yb = y0 >> 4;  // "top" and "bottom" y coords
+  int16_t ytf = y0 & 15, ybf = y0 & 15;  // fractional part of each
 
   // now we need to advance to the next whole pixel ((x0 + 15) & ~15)
   // update yt, ytf along the slope of (dy01/dx01) for x0 - ((x0 + 15) & ~15) steps
@@ -123,18 +125,28 @@ void FillTriangle(
   // yt/ytf are stored in fractions of (x1-x0)
   // so
   {
-    int16_t dx0 = ((x0 + 15) & ~15) - x0;
-    int16_t dyt = dx0 * (y1 - y0) >> 4;
+    int32_t dx0;
+    if (x0 >= 0) {
+      // round up to the next 16
+      dx0 = (16 - x0) & 15;
+    } else {
+      // if x0 is off the left edge of the screen, advance all the way to the
+      // left edge of the screen
+      dx0 = -x0;
+    }
+    int32_t dyt = (dx0 * (y1 - y0)) >> 4;
     yt += dyt / dx01;
     ytf += dyt % dx01;
 
-    int16_t dyb = dx0 * (y2 - y0) >> 4;
+    int32_t dyb = (dx0 * (y2 - y0)) >> 4;
     yb += dyb / dx02;
     ybf += dyb % dx02;
+
     x0 += dx0;
   }
 
-  // x0 is now aligned to a whole number of pixels, and yt/yb/ytf/ybf are initialized
+  // x0 is now aligned to a whole number of pixels,
+  // and yt/yb/ytf/ybf are initialized
   int16_t dy01 = (y1 - y0) / dx01;  // FIXME: does this generate combined divmod?
   int16_t fy01 = (y1 - y0) % dx01;
   int16_t dy02 = (y2 - y0) / dx02;
@@ -145,6 +157,10 @@ void FillTriangle(
   // so technically we are downsampling both dy and dx here by a factor of 16,
   // but that's a wash, so we can still use the existing fractional slope and
   // step along exactly (x1-x0) / 16 pixels and we should be just short of x1
+  if (x1 > 128*16) {
+    // safe to modify x1 now as all slopes have been computed
+    x1 = 128*16;
+  }
   while (x0 < x1) {
     // now, we include the bottom pixel if ybf != 0, otherwise we don't
     if (yt < yb) {
@@ -166,7 +182,10 @@ void FillTriangle(
     pattern_offset &= 3;
     x0 += 16;
   }
-  // now x0 > x1, we went slightly too far.
+  if (x0 >= 128*16) {
+    return;  // off right edge of screen
+  }
+  // now x0 >= x1, we may have gone slightly too far.
   yt = y1 >> 4;  // new top y
   ytf = y1 & 15;  // .. and fractional part
   int16_t dx12 = x2 - x1;
@@ -174,12 +193,17 @@ void FillTriangle(
   int16_t fy12 = (y2 - y1) % dx12;
   // we need to adjust yt, ytf for the new slope of (y2-y1)/(x2-x1)
   {
-    int16_t dx0 = x0 - x1;
-    int16_t dyt = dx0 * (y2 - y1) >> 4;
+    // if x1 was also off the left edge of the screen, then we also
+    // automatically handle that here since x0 is assumed to be past x1.
+    int32_t dx0 = x0 - x1;
+    int32_t dyt = (dx0 * (y2 - y1)) >> 4;
     yt += dyt / dx12;
     ytf += dyt % dx12;
   }
   // draw 2nd trapezoid
+  if (x2 > 128*16) {  // clip to right edge
+    x2 = 128*16;
+  }
   while (x0 < x2) {
     // now, we include the bottom pixel if ybf != 0, otherwise we don't
     if (yt < yb) {
@@ -203,7 +227,7 @@ void FillTriangle(
   }
 }
 
-#if 0
+#ifdef TEST_
 void PrintScreen(uint8_t *screen) {
   for (int page = 0; page < 8; page++) {
     uint8_t mask = 0x01;
@@ -218,7 +242,8 @@ void PrintScreen(uint8_t *screen) {
 
 int main() {
   uint8_t screen[128*8];
-  memset(screen, 0, sizeof(screen));
+  uint8_t pat[] = {0xff, 0xff, 0xff, 0xff};
+#if 0
   for (int i = 0; i < 8; i++) {
     FillVLine(i, 7, 0xff, screen+i);
   }
@@ -237,7 +262,6 @@ int main() {
         screen+i + 18);
   }
 
-  uint8_t pat[] = {0xff, 0xff, 0xff, 0xff};
   FillTriangle(
       15, 16*48,
       48*16 + 8, 16*33 - 1,
@@ -252,8 +276,16 @@ int main() {
       127*16, 16*64,
       48*16 + 8, 16*63,
       pat2, screen);
-
-  PrintScreen(screen);
-}
 #endif
+  for (int16_t x = 1024; x > -1024; --x) {
+    memset(screen, 0, sizeof(screen));
+    FillTriangle(
+        -1024 + x, 32*16,
+        x, -512,
+        1024 + x, 1023,
+        pat, screen);
+    PrintScreen(screen);
+  }
+}
 
+#endif  // TEST_
