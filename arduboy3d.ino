@@ -22,6 +22,38 @@ bool CheckWinding(const Vec2f &s0, const Vec2f &s1, const Vec2f &s2) {
   return x1*y2 < x2*y1;
 }
 
+class Stars {
+  static const int kNumStars = 30;
+  uint8_t ypos_[kNumStars];
+  uint8_t xpos_[kNumStars];
+  uint8_t xspeed_[kNumStars];
+
+ public:
+  Stars() {
+    for (uint8_t i = 0; i < kNumStars; i++) {
+      ypos_[i] = rand() & 63;
+      xpos_[i] = rand() & 255;
+      xspeed_[i] = 1 + (rand() & 7);
+    }
+  }
+
+  void Draw() {
+    for (uint8_t i = 0; i < kNumStars; i++) {
+      uint16_t page = (ypos_[i] >> 3) << 7;
+      uint8_t mask = 1 << (ypos_[i] & 7);
+      uint8_t x = xpos_[i] >> 1;
+      screen_[page + x] |= mask;
+      if (xpos_[i] < xspeed_[i]) {
+        xpos_[i] = 255;
+        ypos_[i] = rand() & 63;
+        xspeed_[i] = 1 + (rand() & 7);
+      } else {
+        xpos_[i] -= xspeed_[i];
+      }
+    }
+  }
+};
+
 void DrawOctahedron() {
   // vertices:
   //  1,  0,  0
@@ -119,8 +151,11 @@ void DrawOctahedron() {
   }
 }
 
+Stars stars_;
+
 void loop() {
   if (arduboy_.nextFrame()) {
+    stars_.Draw();
     DrawOctahedron();
     arduboy_.display(true);
     ++frame_;
