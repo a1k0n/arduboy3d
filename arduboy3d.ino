@@ -151,20 +151,41 @@ void DrawOctahedron() {
     }
 
     Vec3f N = p0 + p1 + p2;  // normal vector
-    int illum = 4 * N.x + 4 * N.y + 10 * N.z;
+    int illum = 7 * N.x + 6 * N.y + 17 * N.z + 1;
     uint8_t pat[4];
-    GetDitherPattern(1 + illum, pat);
-#if 0
-    if (frame_ & 1) {
-      // PWM greyscale dithering?
-      // there's a better way to do this, but it does sort of work
-      uint8_t t = pat[0];
-      pat[0] = (pat[1] << 7) | (pat[1] >> 1);
-      pat[1] = (pat[2] << 7) | (pat[2] >> 1);
-      pat[2] = (pat[3] << 7) | (pat[3] >> 1);
-      pat[3] = (t << 7) | (t >> 1);
+    if (illum >= 32) {
+      pat[0] = pat[1] = pat[2] = pat[3] = 0xff;
+    } else if (illum <= 0) {
+      pat[0] = pat[1] = pat[2] = pat[3] = 0;
+    } else {
+      GetDitherPattern(illum & 15, pat);
+      // 50% grayscale PWM
+      if (illum < 16) {
+        if (frame_ & 1) {
+          pat[0] &= 0x55;
+          pat[1] &= 0xaa;
+          pat[2] &= 0x55;
+          pat[3] &= 0xaa;
+        } else {
+          pat[0] &= 0xaa;
+          pat[1] &= 0x55;
+          pat[2] &= 0xaa;
+          pat[3] &= 0x55;
+        }
+      } else {
+        if (frame_ & 1) {
+          pat[0] |= 0x55;
+          pat[1] |= 0xaa;
+          pat[2] |= 0x55;
+          pat[3] |= 0xaa;
+        } else {
+          pat[0] |= 0xaa;
+          pat[1] |= 0x55;
+          pat[2] |= 0xaa;
+          pat[3] |= 0x55;
+        }
+      }
     }
-#endif
     FillTriangle(s0x, s0y, s1x, s1y, s2x, s2y, pat, screen_);
   }
 }
