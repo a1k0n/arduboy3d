@@ -1,6 +1,9 @@
 #include <Arduboy2.h>
+#include <avr/pgmspace.h>
 #include "draw.h"
+#include "sincos.h"
 #include "vec.h"
+#include "icosahedron.h"
 
 Arduboy2 arduboy_;
 uint8_t *screen_;
@@ -13,14 +16,6 @@ void setup() {
 }
 
 uint16_t frame_ = 0;
-
-bool CheckWinding(const Vec2f &s0, const Vec2f &s1, const Vec2f &s2) {
-  float x1 = s1.x - s0.x,
-        x2 = s2.x - s0.x,
-        y1 = s1.y - s0.y,
-        y2 = s2.y - s0.y;
-  return x1*y2 < x2*y1;
-}
 
 class Stars {
   static const int kNumStars = 30;
@@ -54,6 +49,144 @@ class Stars {
   }
 };
 
+int32_t angle_A_ = 0, angle_B_ = 0;
+int16_t distance_ = 1024;
+int16_t scale_ = 4096;
+
+void ReadInput() {
+  static int32_t A_target = 100000, B_target = 50000;
+  static const int32_t kTurnSpeed = 1000;
+
+  if (arduboy_.pressed(A_BUTTON)) {
+    if (arduboy_.pressed(LEFT_BUTTON)) {
+      scale_ -= 10;
+    }
+    if (arduboy_.pressed(RIGHT_BUTTON)) {
+      scale_ += 10;
+    }
+    if (arduboy_.pressed(UP_BUTTON)) {
+      distance_ += 3;
+    }
+    if (arduboy_.pressed(DOWN_BUTTON)) {
+      distance_ -= 3;
+    }
+  } else {
+    if (arduboy_.pressed(LEFT_BUTTON)) {
+      B_target -= kTurnSpeed;
+    }
+    if (arduboy_.pressed(RIGHT_BUTTON)) {
+      B_target += kTurnSpeed;
+    }
+    if (arduboy_.pressed(UP_BUTTON)) {
+      A_target -= kTurnSpeed;
+    }
+    if (arduboy_.pressed(DOWN_BUTTON)) {
+      A_target += kTurnSpeed;
+    }
+  }
+
+  angle_A_ += (A_target - angle_A_) >> 7;
+  angle_B_ += (B_target - angle_B_) >> 7;
+}
+
+void DrawObject() {
+  static const uint8_t NVERTS = sizeof(icosahedron_vertices) / 3;
+  static const uint8_t NFACES = sizeof(icosahedron_faces) / 3;
+  Vec216 verts[NVERTS];  // rotated, projected screen space vertices
+
+#if 0
+  {
+    uint8_t i = 0;
+    do {
+      int16_t s, c;
+      GetSinCos(i, &s, &c);
+      uint8_t x = 64 + (c >> 3);
+      uint8_t y = 32 + (s >> 3);
+      screen_[(y >> 3) * 128 + x] |= 1 << (y & 7);
+    } while (++i != 0);
+  }
+
+  return;
+#endif
+
+  // construct rotation matrix
+  int16_t cA, sA, cB, sB;
+
+  GetSinCos((angle_A_ >> 8) & 255, &sA, &cA);
+  GetSinCos((angle_B_ >> 8) & 255, &sB, &cB);
+
+  // local coordinate frame given rotation values
+  // 8.8 fixed point format rotation matrix
+#if 1
+  Vec388 Fx(cB, (int32_t) -cA*sB >> 8, (int32_t) sA*sB >> 8),
+         Fy(sB, (int32_t) cA*cB >> 8, (int32_t) -sA*cB >> 8),
+         Fz(0, sA, cA);
+#else
+  Vec388 Fx(cA, 0, sA),
+         Fy(0, 256, 0),
+         Fz(-sA, 0, cA);
+#endif
+
+  // rotate and project all vertices
+  for (uint8_t i = 0, j = 0; i < NVERTS; i++, j += 3) {
+    Vec38 obj_vert(
+        pgm_read_byte_near(icosahedron_vertices + j),
+        pgm_read_byte_near(icosahedron_vertices + j + 1),
+        pgm_read_byte_near(icosahedron_vertices + j + 2));
+    Vec388 world_vert(  // FIXME: extend precision a bit here, no >>8?
+        Fx.dot(obj_vert),
+        Fy.dot(obj_vert),
+        Fz.dot(obj_vert));
+
+    world_vert.project(scale_, distance_, verts + i);
+#if 0
+    if (screen_coord.x >= 0 && screen_coord.x < 128*16
+        && screen_coord.y >= 0 && screen_coord.y <= 64*16) {
+      uint8_t x = screen_coord.x >> 4;
+      uint8_t y = screen_coord.y >> 4;
+      screen_[(y >> 3) * 128 + x] |= 1 << (y & 7);
+    }
+#endif
+  }
+
+  // draw faces
+  for (uint8_t j = 0; j < NFACES * 3; j += 3) {
+    uint8_t fa = pgm_read_byte_near(icosahedron_faces + j),
+            fb = pgm_read_byte_near(icosahedron_faces + j + 1),
+            fc = pgm_read_byte_near(icosahedron_faces + j + 2);
+    Vec216 sa = verts[fb] - verts[fa];
+    Vec216 sb = verts[fc] - verts[fa];
+    if ((int32_t) sa.x * sb.y > (int32_t) sa.y * sb.x) {  // check winding order
+      continue;  // back-facing
+    }
+    Vec38 obj_normal(
+        pgm_read_byte_near(icosahedron_normals + j),
+        pgm_read_byte_near(icosahedron_normals + j + 1),
+        pgm_read_byte_near(icosahedron_normals + j + 2));
+    Vec388 world_normal(
+        Fx.dot(obj_normal),
+        Fy.dot(obj_normal),
+        Fz.dot(obj_normal));
+    int8_t illum = (world_normal.x + world_normal.y + 4 * world_normal.z) >> 4;
+    uint8_t pat[4];
+    GetDitherPattern(illum, frame_ & 1, pat);
+    FillTriangle(
+        verts[fa].x, verts[fa].y,
+        verts[fb].x, verts[fb].y,
+        verts[fc].x, verts[fc].y,
+        pat, screen_);
+  }
+}
+
+#if 0
+bool CheckWinding(const Vec2f &s0, const Vec2f &s1, const Vec2f &s2) {
+  float x1 = s1.x - s0.x,
+        x2 = s2.x - s0.x,
+        y1 = s1.y - s0.y,
+        y2 = s2.y - s0.y;
+  return x1*y2 < x2*y1;
+}
+
 void DrawOctahedron() {
   // vertices:
   //  1,  0,  0
@@ -72,42 +205,9 @@ void DrawOctahedron() {
   // so we need our premultiplied xyz rotation matrix
   // in fact let's just use two rotations, A and B
 
-  static float A = 0, A_target = 10;
-  static float B = 0, B_target = 10;
   static const float kTurnSpeed = 0.1;
   static float scale = 2448;
   static float distance = 4;
-
-  if (arduboy_.pressed(A_BUTTON)) {
-    if (arduboy_.pressed(LEFT_BUTTON)) {
-      scale -= 10;
-    }
-    if (arduboy_.pressed(RIGHT_BUTTON)) {
-      scale += 10;
-    }
-    if (arduboy_.pressed(UP_BUTTON)) {
-      distance += 0.01;
-    }
-    if (arduboy_.pressed(DOWN_BUTTON)) {
-      distance -= 0.01;
-    }
-  } else {
-    if (arduboy_.pressed(LEFT_BUTTON)) {
-      B_target -= kTurnSpeed;
-    }
-    if (arduboy_.pressed(RIGHT_BUTTON)) {
-      B_target += kTurnSpeed;
-    }
-    if (arduboy_.pressed(UP_BUTTON)) {
-      A_target -= kTurnSpeed;
-    }
-    if (arduboy_.pressed(DOWN_BUTTON)) {
-      A_target += kTurnSpeed;
-    }
-  }
-
-  A += (A_target - A) * 0.01;
-  B += (B_target - B) * 0.01;
 
   float cA = cos(A), sA = sin(A),
         cB = cos(B), sB = sin(B);
@@ -153,42 +253,11 @@ void DrawOctahedron() {
     Vec3f N = p0 + p1 + p2;  // normal vector
     int illum = 7 * N.x + 6 * N.y + 17 * N.z + 1;
     uint8_t pat[4];
-    if (illum >= 32) {
-      pat[0] = pat[1] = pat[2] = pat[3] = 0xff;
-    } else if (illum <= 0) {
-      pat[0] = pat[1] = pat[2] = pat[3] = 0;
-    } else {
-      GetDitherPattern(illum & 15, pat);
-      // 50% grayscale PWM
-      if (illum < 16) {
-        if (frame_ & 1) {
-          pat[0] &= 0x33;
-          pat[1] &= 0xcc;
-          pat[2] &= 0x33;
-          pat[3] &= 0xcc;
-        } else {
-          pat[0] &= 0xcc;
-          pat[1] &= 0x33;
-          pat[2] &= 0xcc;
-          pat[3] &= 0x33;
-        }
-      } else {
-        if (frame_ & 1) {
-          pat[0] |= 0x33;
-          pat[1] |= 0xcc;
-          pat[2] |= 0x33;
-          pat[3] |= 0xcc;
-        } else {
-          pat[0] |= 0xcc;
-          pat[1] |= 0x33;
-          pat[2] |= 0xcc;
-          pat[3] |= 0x33;
-        }
-      }
-    }
+    GetDitherPattern(illum & 15, frame_ & 1, pat);
     FillTriangle(s0x, s0y, s1x, s1y, s2x, s2y, pat, screen_);
   }
 }
+#endif
 
 Stars stars_;
 
@@ -206,7 +275,8 @@ void loop() {
         pat, screen_);
 #endif
 
-    DrawOctahedron();
+    ReadInput();
+    DrawObject();
     arduboy_.display(true);
     ++frame_;
   }

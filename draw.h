@@ -11,7 +11,7 @@ extern void FillTriangle(
     uint8_t *pattern, uint8_t *screen);
 
 // get a dither pattern from color 0 to 16 (inclusive)
-extern void GetDitherPattern(int8_t color, uint8_t *pattern);
+extern void GetDitherPattern(int8_t color, uint8_t frame_offset, uint8_t *pattern);
 
 extern void FillVLine(uint8_t y0, uint8_t y1, uint8_t pattern,
     uint8_t *screenptr);

@@ -62,15 +62,48 @@ void FillVLine(int8_t y0_, int8_t y1_, uint8_t pattern, uint8_t *screenptr) {
 }
 
 // get a dither pattern from color 0 to 16 (inclusive)
-void GetDitherPattern(int8_t color, uint8_t *pattern) {
-  if (color < 0) color = 0;
-  if (color > 16) color = 16;
-  color *= 4;
+void GetDitherPattern(int8_t color, uint8_t frame_offset, uint8_t *pat) {
+  if (color <= 0) {
+    pat[0] = pat[1] = pat[2] = pat[3] = 0;
+    return;
+  }
+  if (color >= 32) {
+    pat[0] = pat[1] = pat[2] = pat[3] = 0xff;
+    return;
+  }
+  uint8_t offset = (color & 15) * 4;
   // unroll to pgm_read_word?
-  pattern[0] = pgm_read_byte_near(dither_ + color);
-  pattern[1] = pgm_read_byte_near(dither_ + color + 1);
-  pattern[2] = pgm_read_byte_near(dither_ + color + 2);
-  pattern[3] = pgm_read_byte_near(dither_ + color + 3);
+  pat[0] = pgm_read_byte_near(dither_ + offset);
+  pat[1] = pgm_read_byte_near(dither_ + offset + 1);
+  pat[2] = pgm_read_byte_near(dither_ + offset + 2);
+  pat[3] = pgm_read_byte_near(dither_ + offset + 3);
+
+  // 50% grayscale PWM
+  if (color < 16) {
+    if (frame_offset & 1) {
+      pat[0] &= 0x33;
+      pat[1] &= 0xcc;
+      pat[2] &= 0x33;
+      pat[3] &= 0xcc;
+    } else {
+      pat[0] &= 0xcc;
+      pat[1] &= 0x33;
+      pat[2] &= 0xcc;
+      pat[3] &= 0x33;
+    }
+  } else {
+    if (frame_offset & 1) {
+      pat[0] |= 0x33;
+      pat[1] |= 0xcc;
+      pat[2] |= 0x33;
+      pat[3] |= 0xcc;
+    } else {
+      pat[0] |= 0xcc;
+      pat[1] |= 0x33;
+      pat[2] |= 0xcc;
+      pat[3] |= 0x33;
+    }
+  }
 }
 
 // draw triangle into screen buffer
