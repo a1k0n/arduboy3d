@@ -162,27 +162,27 @@ void DrawOctahedron() {
       // 50% grayscale PWM
       if (illum < 16) {
         if (frame_ & 1) {
-          pat[0] &= 0x55;
-          pat[1] &= 0xaa;
-          pat[2] &= 0x55;
-          pat[3] &= 0xaa;
+          pat[0] &= 0x33;
+          pat[1] &= 0xcc;
+          pat[2] &= 0x33;
+          pat[3] &= 0xcc;
         } else {
-          pat[0] &= 0xaa;
-          pat[1] &= 0x55;
-          pat[2] &= 0xaa;
-          pat[3] &= 0x55;
+          pat[0] &= 0xcc;
+          pat[1] &= 0x33;
+          pat[2] &= 0xcc;
+          pat[3] &= 0x33;
         }
       } else {
         if (frame_ & 1) {
-          pat[0] |= 0x55;
-          pat[1] |= 0xaa;
-          pat[2] |= 0x55;
-          pat[3] |= 0xaa;
+          pat[0] |= 0x33;
+          pat[1] |= 0xcc;
+          pat[2] |= 0x33;
+          pat[3] |= 0xcc;
         } else {
-          pat[0] |= 0xaa;
-          pat[1] |= 0x55;
-          pat[2] |= 0xaa;
-          pat[3] |= 0x55;
+          pat[0] |= 0xcc;
+          pat[1] |= 0x33;
+          pat[2] |= 0xcc;
+          pat[3] |= 0x33;
         }
       }
     }
