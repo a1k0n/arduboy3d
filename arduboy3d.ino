@@ -3,16 +3,39 @@
 #include "draw.h"
 #include "sincos.h"
 #include "vec.h"
-#include "icosahedron.h"
+#include "teapot.h"
 
 Arduboy2 arduboy_;
 uint8_t *screen_;
+
+static volatile uint8_t profilebuf[8];
+static volatile uint8_t profileflag = 0;
+
+ISR(TIMER4_OVF_vect) {
+  uint8_t *spdata = SP;
+  if (!profileflag) {
+    profilebuf[0] = spdata[7+0];
+    profilebuf[1] = spdata[7+1];
+    profilebuf[2] = spdata[7+2];
+    profilebuf[3] = spdata[7+3];
+    profilebuf[4] = spdata[7+4];
+    profilebuf[5] = spdata[7+5];
+    profilebuf[6] = spdata[7+6];
+    profilebuf[7] = spdata[7+7];
+    profileflag = 1;
+  }
+}
 
 void setup() {
   // put your setup code here, to run once:
   arduboy_.begin();
   screen_ = arduboy_.getBuffer();
   arduboy_.setFrameRate(60);
+
+  // set up timer interrupt, once every ... whatever
+  TCCR4A = 0b00000000;    // no pwm, 
+  TCCR4B = 0x0c;    // clk / 2048
+  TIMSK4 = 0b00000100;  // enable ints
 }
 
 uint16_t frame_ = 0;
@@ -85,29 +108,14 @@ void ReadInput() {
     }
   }
 
-  angle_A_ += (A_target - angle_A_) >> 7;
-  angle_B_ += (B_target - angle_B_) >> 7;
+  angle_A_ += (A_target - angle_A_) >> 6;
+  angle_B_ += (B_target - angle_B_) >> 6;
 }
 
 void DrawObject() {
-  static const uint8_t NVERTS = sizeof(icosahedron_vertices) / 3;
-  static const uint8_t NFACES = sizeof(icosahedron_faces) / 3;
+  static const uint8_t NVERTS = sizeof(mesh_vertices) / 3;
+  static const uint8_t NFACES = sizeof(mesh_faces) / 3;
   Vec216 verts[NVERTS];  // rotated, projected screen space vertices
-
-#if 0
-  {
-    uint8_t i = 0;
-    do {
-      int16_t s, c;
-      GetSinCos(i, &s, &c);
-      uint8_t x = 64 + (c >> 3);
-      uint8_t y = 32 + (s >> 3);
-      screen_[(y >> 3) * 128 + x] |= 1 << (y & 7);
-    } while (++i != 0);
-  }
-
-  return;
-#endif
 
   // construct rotation matrix
   int16_t cA, sA, cB, sB;
@@ -128,11 +136,11 @@ void DrawObject() {
 #endif
 
   // rotate and project all vertices
-  for (uint8_t i = 0, j = 0; i < NVERTS; i++, j += 3) {
+  for (uint16_t i = 0, j = 0; i < NVERTS; i++, j += 3) {
     Vec38 obj_vert(
-        pgm_read_byte_near(icosahedron_vertices + j),
-        pgm_read_byte_near(icosahedron_vertices + j + 1),
-        pgm_read_byte_near(icosahedron_vertices + j + 2));
+        pgm_read_byte_near(mesh_vertices + j),
+        pgm_read_byte_near(mesh_vertices + j + 1),
+        pgm_read_byte_near(mesh_vertices + j + 2));
     Vec388 world_vert(  // FIXME: extend precision a bit here, no >>8?
         Fx.dot(obj_vert),
         Fy.dot(obj_vert),
@@ -142,6 +150,8 @@ void DrawObject() {
 #if 0
     if (screen_coord.x >= 0 && screen_coord.x < 128*16
         && screen_coord.y >= 0 && screen_coord.y <= 64*16) {
+itCud2
+
       uint8_t x = screen_coord.x >> 4;
       uint8_t y = screen_coord.y >> 4;
       screen_[(y >> 3) * 128 + x] |= 1 << (y & 7);
@@ -150,118 +160,54 @@ void DrawObject() {
   }
 
   // draw faces
-  for (uint8_t j = 0; j < NFACES * 3; j += 3) {
-    uint8_t fa = pgm_read_byte_near(icosahedron_faces + j),
-            fb = pgm_read_byte_near(icosahedron_faces + j + 1),
-            fc = pgm_read_byte_near(icosahedron_faces + j + 2);
+  for (uint16_t j = 0; j < NFACES * 3; j += 3) {
+    uint8_t fa = pgm_read_byte_near(mesh_faces + j),
+            fb = pgm_read_byte_near(mesh_faces + j + 1),
+            fc = pgm_read_byte_near(mesh_faces + j + 2);
     Vec216 sa = verts[fb] - verts[fa];
     Vec216 sb = verts[fc] - verts[fa];
     if ((int32_t) sa.x * sb.y > (int32_t) sa.y * sb.x) {  // check winding order
       continue;  // back-facing
     }
+#if 1
     Vec38 obj_normal(
-        pgm_read_byte_near(icosahedron_normals + j),
-        pgm_read_byte_near(icosahedron_normals + j + 1),
-        pgm_read_byte_near(icosahedron_normals + j + 2));
+        pgm_read_byte_near(mesh_normals + j),
+        pgm_read_byte_near(mesh_normals + j + 1),
+        pgm_read_byte_near(mesh_normals + j + 2));
     Vec388 world_normal(
         Fx.dot(obj_normal),
         Fy.dot(obj_normal),
         Fz.dot(obj_normal));
-    int8_t illum = (world_normal.x + world_normal.y + 4 * world_normal.z) >> 4;
+    int8_t illum = (world_normal.x + world_normal.y + 4 * world_normal.z) >> 5;
     uint8_t pat[4];
-    GetDitherPattern(illum, frame_ & 1, pat);
+    GetDitherPattern(illum, pat);
     FillTriangle(
         verts[fa].x, verts[fa].y,
         verts[fb].x, verts[fb].y,
         verts[fc].x, verts[fc].y,
         pat, screen_);
-  }
-}
-
-#if 0
-bool CheckWinding(const Vec2f &s0, const Vec2f &s1, const Vec2f &s2) {
-  float x1 = s1.x - s0.x,
-        x2 = s2.x - s0.x,
-        y1 = s1.y - s0.y,
-        y2 = s2.y - s0.y;
-  return x1*y2 < x2*y1;
-}
-
-void DrawOctahedron() {
-  // vertices:
-  //  1,  0,  0
-  // -1,  0,  0
-  //  0,  1,  0
-  //  0, -1,  0
-  //  0,  0,  1
-  //  0,  0, -1
-  
-  // faces: (8)
-  // 024, 124, 034, 134, 025, 125, 035, 135
-  
-  // so first, we perform our xyz rotations to find a new xyz coordinate
-  // frame (essentially, the resultant rotation matrix R is our coordinate
-  // frame)
-  // so we need our premultiplied xyz rotation matrix
-  // in fact let's just use two rotations, A and B
-
-  static const float kTurnSpeed = 0.1;
-  static float scale = 2448;
-  static float distance = 4;
-
-  float cA = cos(A), sA = sin(A),
-        cB = cos(B), sB = sin(B);
-
-  // local coordinate frame given rotation values
-  Vec3f Fx(cB, -cA*sB, sA*sB),
-        Fy(sB, cA*cB, -sA*cB),
-        Fz(0, sA, cA);
-
-  for (uint8_t f = 0; f < 8; f++) {
-    Vec3f p0(f&1 ? Fx : -Fx),
-          p1(f&2 ? Fy : -Fy),
-          p2(f&4 ? Fz : -Fz);
-    Vec2f s0, s1, s2;
-    p0.project(scale, distance, &s0);
-    // for each flipped axis, flip the "parity" so we generate a consistent
-    // clockwise winding order on each face
-    if ((f ^ (f>>1) ^ (f>>2)) & 1) {
-      p1.project(scale, distance, &s1);
-      p2.project(scale, distance, &s2);
-    } else {
-      p1.project(scale, distance, &s2);
-      p2.project(scale, distance, &s1);
+#else
+    if (verts[fa].x >= 0 && verts[fa].x < 16*128
+        && verts[fa].y >= 0 && verts[fa].y <= 16*64) {
+      screen_[(verts[fa].y >> 7) * 128 + (verts[fa].x >> 4)] |=
+        1 << ((verts[fa].y >> 4) & 7);
     }
-    // check winding order in screen space, cull back faces
-    if (!CheckWinding(s0, s1, s2)) {
-      continue;
-    }
-
-    int16_t s0x = s0.x, s0y = s0.y,
-            s1x = s1.x, s1y = s1.y,
-            s2x = s2.x, s2y = s2.y;
-    // hold B to show what it looks like without subpixel rendering
-    if (arduboy_.pressed(B_BUTTON)) {
-      s0x = (s0x + 8) & ~15;
-      s0y = (s0y + 8) & ~15;
-      s1x = (s1x + 8) & ~15;
-      s1y = (s1y + 8) & ~15;
-      s2x = (s2x + 8) & ~15;
-      s2y = (s2y + 8) & ~15;
-    }
-
-    Vec3f N = p0 + p1 + p2;  // normal vector
-    int illum = 7 * N.x + 6 * N.y + 17 * N.z + 1;
-    uint8_t pat[4];
-    GetDitherPattern(illum & 15, frame_ & 1, pat);
-    FillTriangle(s0x, s0y, s1x, s1y, s2x, s2y, pat, screen_);
-  }
-}
 #endif
+    // poll for profiling data
+    if (profileflag && SerialUSB.availableForWrite() >= 8) {
+      SerialUSB.write((char*) profilebuf, 8);
+      profileflag = 0;
+    }
+  }
+}
 
 Stars stars_;
 
+static unsigned long t0_ = ~0L;
 void loop() {
+  if (t0_ == ~0L) {
+    t0_ = micros();
+  }
   if (arduboy_.nextFrame()) {
     stars_.Draw();
 #if 0
@@ -279,5 +225,12 @@ void loop() {
     DrawObject();
     arduboy_.display(true);
     ++frame_;
+    unsigned long dt = micros() - t0_;
+    int fps = 100000UL * frame_ / (dt / 100);
+    arduboy_.setCursor(0, 0);
+    arduboy_.print(fps/10);
+    arduboy_.write('.');
+    arduboy_.print(fps % 10);
+    arduboy_.print(F(" FPS"));
   }
 }

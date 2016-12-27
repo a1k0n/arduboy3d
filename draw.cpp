@@ -62,6 +62,24 @@ void FillVLine(int8_t y0_, int8_t y1_, uint8_t pattern, uint8_t *screenptr) {
 }
 
 // get a dither pattern from color 0 to 16 (inclusive)
+void GetDitherPattern(int8_t color, uint8_t *pat) {
+  if (color <= 0) {
+    pat[0] = pat[1] = pat[2] = pat[3] = 0;
+    return;
+  }
+  if (color >= 16) {
+    pat[0] = pat[1] = pat[2] = pat[3] = 0xff;
+    return;
+  }
+  uint8_t offset = color * 4;
+  // unroll to pgm_read_word?
+  pat[0] = pgm_read_byte_near(dither_ + offset);
+  pat[1] = pgm_read_byte_near(dither_ + offset + 1);
+  pat[2] = pgm_read_byte_near(dither_ + offset + 2);
+  pat[3] = pgm_read_byte_near(dither_ + offset + 3);
+}
+
+// get a two-frame dither pattern, colors 0 to 32 (inclusive)
 void GetDitherPattern(int8_t color, uint8_t frame_offset, uint8_t *pat) {
   if (color <= 0) {
     pat[0] = pat[1] = pat[2] = pat[3] = 0;
