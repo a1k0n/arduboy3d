@@ -112,8 +112,8 @@ void DrawObject() {
   // construct rotation matrix
   int16_t cA, sA, cB, sB;
 
-  GetSinCos((angle_A_ >> 8) & 255, &sA, &cA);
-  GetSinCos((angle_B_ >> 8) & 255, &sB, &cB);
+  GetSinCos((angle_A_ >> 6) & 1023, &sA, &cA);
+  GetSinCos((angle_B_ >> 6) & 1023, &sB, &cB);
 
   // local coordinate frame given rotation values
   // 8.8 fixed point format rotation matrix
