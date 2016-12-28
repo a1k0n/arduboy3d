@@ -8,21 +8,17 @@
 Arduboy2 arduboy_;
 uint8_t *screen_;
 
-static volatile uint8_t profilebuf[8];
-static volatile uint8_t profileflag = 0;
+static const size_t PROFILEBUFSIZ = 32;
+static volatile uint8_t profilebuf_[PROFILEBUFSIZ];
+static volatile uint8_t profileptr_ = 0;
 
 ISR(TIMER4_OVF_vect) {
-  uint8_t *spdata = SP;
-  if (!profileflag) {
-    profilebuf[0] = spdata[7+0];
-    profilebuf[1] = spdata[7+1];
-    profilebuf[2] = spdata[7+2];
-    profilebuf[3] = spdata[7+3];
-    profilebuf[4] = spdata[7+4];
-    profilebuf[5] = spdata[7+5];
-    profilebuf[6] = spdata[7+6];
-    profilebuf[7] = spdata[7+7];
-    profileflag = 1;
+  if (profileptr_ < PROFILEBUFSIZ) {
+    uint8_t *profdata = profilebuf_ + profileptr_;
+    uint8_t *spdata = SP+9;
+    profdata[1] = spdata[0];
+    profdata[0] = spdata[1];
+    profileptr_ += 2;
   }
 }
 
@@ -34,7 +30,7 @@ void setup() {
 
   // set up timer interrupt, once every ... whatever
   TCCR4A = 0b00000000;    // no pwm, 
-  TCCR4B = 0x0c;    // clk / 2048
+  TCCR4B = 0x08;    // clk / 128
   TIMSK4 = 0b00000100;  // enable ints
 }
 
@@ -194,9 +190,9 @@ itCud2
     }
 #endif
     // poll for profiling data
-    if (profileflag && SerialUSB.availableForWrite() >= 8) {
-      SerialUSB.write((char*) profilebuf, 8);
-      profileflag = 0;
+    if (profileptr_ == PROFILEBUFSIZ) {
+      SerialUSB.write((char*) profilebuf_, PROFILEBUFSIZ);
+      profileptr_ = 0;
     }
   }
 }
