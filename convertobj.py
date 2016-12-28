@@ -36,6 +36,14 @@ def LoadObj(infile):
     return verts, normals, faces
 
 
+def ComputeNormals(verts, faces):
+    a = verts[faces[:,0]]
+    b = verts[faces[:,1]]
+    c = verts[faces[:,2]]
+    n = np.cross(b-a, c-a)
+    return (n.T / np.linalg.norm(n, axis=1)).T
+
+
 def MergeVertices(verts, faces):
     ''' merge vertices which have the same position after quantization '''
     vertex_map = {}
@@ -57,6 +65,7 @@ def MergeVertices(verts, faces):
 
 def ConvertObj(infile):
     verts, normals, faces = LoadObj(infile)
+    normals = ComputeNormals(verts, faces)  # ignore normals from obj
     objname = 'mesh'  # fixed name for now
     vcenter = (np.max(verts, axis=0) + np.min(verts, axis=0)) / 2.0
     verts -= vcenter
