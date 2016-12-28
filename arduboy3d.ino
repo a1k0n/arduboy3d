@@ -4,6 +4,7 @@
 #include "sincos.h"
 #include "vec.h"
 #include "teapot.h"
+// #include "icosahedron.h"
 
 Arduboy2 arduboy_;
 uint8_t *screen_;

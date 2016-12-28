@@ -148,7 +148,8 @@ void FillTriangle(
       t = y1; y1 = y0; y0 = t;
     }
   }
-  if (x2 <= 0 || x0 > 127*16) {  // entire triangle is off screen
+  if (x2 <= 0 || x0 > 127*16 || x0 == x2) {
+    // entire triangle is off screen or degenerate
     return;
   }
 
@@ -160,8 +161,9 @@ void FillTriangle(
   // (normally assumed to be 0 in bresenham's)
 
   // first trapezoid: x0 to x1
-  int16_t dx01 = x1 - x0;
   int16_t dx02 = x2 - x0;
+  int16_t dy02 = (y2 - y0) / dx02;
+  int16_t fy02 = (y2 - y0) % dx02;
 
   // the top and bottom variable names are a misnomer, as they can also
   // be inverted. the "upside down" case is handled by checking in the
@@ -175,33 +177,44 @@ void FillTriangle(
   // y' = y0 + dx' * (y1-y0) / (x1-x0)
   // yt/ytf are stored in fractions of (x1-x0)
   // so
-  {
-    int32_t dx0;
+  int16_t dx01 = x1 - x0;
+  int16_t dy01, fy01;
+  if (dx01) {
     if (x0 >= 0) {
       // round up to the next 16
-      dx0 = (16 - x0) & 15;
+      int8_t dx0 = (16 - x0) & 15;
+      int16_t dyt = (dx0 * (y1 - y0)) >> 4;
+      int16_t dyb = (dx0 * (y2 - y0)) >> 4;
+      // unroll divmod here, as it's a lot faster in the common case
+      while (dyt >= dx01) { ++yt; dyt -= dx01; }
+      while (dyt <= -dx01) { --yt; dyt += dx01; }
+      ytf += dyt;
+
+      while (dyb >= dx02) { ++yb; dyb -= dx02; }
+      while (dyb <= -dx02) { --yb; dyb += dx02; }
+      ybf += dyb;
+      x0 += dx0;
     } else {
-      // if x0 is off the left edge of the screen, advance all the way to the
-      // left edge of the screen
-      dx0 = -x0;
+      // if x0 is off the left edge of the screen, advance all the way to
+      // the left edge of the screen
+      int32_t dx0 = -x0;
+      int32_t dyt = (dx0 * (y1 - y0)) >> 4;
+      int32_t dyb = (dx0 * (y2 - y0)) >> 4;
+      yt += dyt / dx01;
+      ytf += dyt % dx01;
+      yb += dyb / dx02;
+      ybf += dyb % dx02;
+      x0 = 0;
     }
-    int32_t dyt = (dx0 * (y1 - y0)) >> 4;
-    yt += dyt / dx01;
-    ytf += dyt % dx01;
 
-    int32_t dyb = (dx0 * (y2 - y0)) >> 4;
-    yb += dyb / dx02;
-    ybf += dyb % dx02;
-
-    x0 += dx0;
+    dy01 = 0;
+    fy01 = y1 - y0;
+    while (fy01 >= dx01) { ++dy01; fy01 -= dx01; }
+    while (fy01 <= -dx01) { --dy01; fy01 += dx01; }
   }
 
   // x0 is now aligned to a whole number of pixels,
   // and yt/yb/ytf/ybf are initialized
-  int16_t dy01 = (y1 - y0) / dx01;  // FIXME: does this generate combined divmod?
-  int16_t fy01 = (y1 - y0) % dx01;
-  int16_t dy02 = (y2 - y0) / dx02;
-  int16_t fy02 = (y2 - y0) % dx02;
   int8_t x = x0 >> 4;
   uint8_t pattern_offset = x & 3;
   screen += x;
@@ -240,16 +253,30 @@ void FillTriangle(
   yt = y1 >> 4;  // new top y
   ytf = y1 & 15;  // .. and fractional part
   int16_t dx12 = x2 - x1;
-  int16_t dy12 = (y2 - y1) / dx12;
-  int16_t fy12 = (y2 - y1) % dx12;
+  int16_t dy12;
+  int16_t fy12;
   // we need to adjust yt, ytf for the new slope of (y2-y1)/(x2-x1)
-  {
-    // if x1 was also off the left edge of the screen, then we also
-    // automatically handle that here since x0 is assumed to be past x1.
-    int32_t dx0 = x0 - x1;
-    int32_t dyt = (dx0 * (y2 - y1)) >> 4;
-    yt += dyt / dx12;
-    ytf += dyt % dx12;
+  if (dx12) {
+    if (x1 >= 0) {
+      // we're just making a sub-pixel adjustment
+      int8_t dx0 = x0 - x1;
+      int16_t dyt = (dx0 * (y2 - y1)) >> 4;
+      while (dyt >= dx12) { ++yt; dyt -= dx12; }
+      while (dyt <= -dx12) { --yt; dyt += dx12; }
+    } else {
+      // we're advancing to the left edge
+      int32_t dx0 = x0 - x1;
+      int32_t dyt = (dx0 * (y2 - y1)) >> 4;
+      yt += dyt / dx12;
+      ytf += dyt % dx12;
+    }
+
+    dy12 = 0;
+    fy12 = y2 - y1;
+    // we need to adjust yt, ytf for the new slope of (y2-y1)/(x2-x1)
+    // 18.2 -> 18.7
+    while (fy12 >= dx12) { ++dy12; fy12 -= dx12; }
+    while (fy12 <= -dx12) { --dy12; fy12 += dx12; }
   }
   // draw 2nd trapezoid
   if (x2 > 128*16) {  // clip to right edge
@@ -337,6 +364,10 @@ int main() {
         pat, screen);
     PrintScreen(screen);
   }
+
+  // test cases:
+  // degenrate triangles, x0 == x2, x1 == x0, y0==y1 && y1==y2, etc
+  // clipping off screen in all four directions
 }
 
 #endif  // TEST_
