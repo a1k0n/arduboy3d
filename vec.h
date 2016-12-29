@@ -74,9 +74,10 @@ struct Vec388 {
   }
 
   void project(int16_t scale, int16_t dist, Vec216 *out) {
-    // int16_t ooz = 256 / (dist - z);  // is this going to be precise enough?!
-    out->x = 64*16 + (int32_t) scale * x / (dist - z);
-    out->y = 32*16 - (int32_t) scale * y / (dist - z);
+    // precompute one over z so we only do a slow division once
+    int32_t ooz = 256L * (int32_t)scale / (dist - z);
+    out->x = 64*16 + (ooz * x >> 8);
+    out->y = 32*16 - (ooz * y >> 8);
   }
 
   Vec388 operator-() {
