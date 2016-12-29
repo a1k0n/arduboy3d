@@ -159,7 +159,7 @@ void DrawObject() {
         Fy.dot(obj_vert),
         Fz.dot(obj_vert));
 
-    world_vert.project(scale_, distance_, verts + i);
+    world_vert.project(scale_, verts + i);
 #if 0
     if (screen_coord.x >= 0 && screen_coord.x < 128*16
         && screen_coord.y >= 0 && screen_coord.y <= 64*16) {
