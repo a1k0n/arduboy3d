@@ -14,12 +14,28 @@ static volatile uint8_t profilebuf_[PROFILEBUFSIZ];
 static volatile uint8_t profileptr_ = 0;
 
 ISR(TIMER4_OVF_vect) {
-  if (profileptr_ < PROFILEBUFSIZ) {
+  if (profileptr_+2 <= PROFILEBUFSIZ) {
     uint8_t *profdata = profilebuf_ + profileptr_;
-    uint8_t *spdata = SP+9;
+    // disassemble, count # pushes in prologue, add 1 to determine SP+x
+    uint8_t *spdata = SP+17;
     profdata[1] = spdata[0];
     profdata[0] = spdata[1];
     profileptr_ += 2;
+    for (uint8_t j = 2; j < 16 && profileptr_+2 < PROFILEBUFSIZ; j += 2) {
+      // walk the stack and see if we have any return addresses available
+
+      // subtract 2 words to get address of potential call instruction;
+      // attribute this sample to that instruction
+      uint16_t stackvalue = (spdata[j] << 8) + spdata[j+1] - 2;
+      if (stackvalue >= 0x4000
+          || pgm_read_word_near(stackvalue << 1) != 0x940e) {
+        break;
+      }
+      profdata[j] = stackvalue & 255;
+      profdata[j+1] = stackvalue >> 8;
+      profdata[j-1] |= 0x80;  // add continuation bit on previous addr
+      profileptr_ += 2;
+    }
   }
 }
 
