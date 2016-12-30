@@ -45,17 +45,17 @@ void FillVLine(int8_t y0_, int8_t y1_, uint8_t pattern, uint8_t *screenptr) {
     uint8_t mask = pgm_read_byte_near(topmask_ + (y0&7))
       & pgm_read_byte_near(bottommask_ + (y1&7));
     *page0 &= ~mask;
-    *page0 |= pattern & mask;
+    *page0 |= pattern & mask;  // fill y0..y1 in same page in one shot
   } else {
     uint8_t mask = pgm_read_byte_near(topmask_ + (y0&7));
     *page0 &= ~mask;
-    *page0 |= pattern & mask;
+    *page0 |= pattern & mask;  // write top 1..8 pixels
     page0 += 128;
     while (page0 != page1) {
-      *page0 = pattern;
+      *page0 = pattern;  // fill middle 8 pixels at a time
       page0 += 128;
     }
-    mask = pgm_read_byte_near(bottommask_ + (y1&7));
+    mask = pgm_read_byte_near(bottommask_ + (y1&7));  // and bottom 1..8 pixels
     *page0 &= ~mask;
     *page0 |= pattern & mask;
   }
@@ -161,9 +161,12 @@ void FillTriangle(
   // (normally assumed to be 0 in bresenham's)
 
   // first trapezoid: x0 to x1
-  int16_t dx02 = x2 - x0;
-  int16_t dy02 = (y2 - y0) / dx02;
-  int16_t fy02 = (y2 - y0) % dx02;
+  int16_t dx02 = x2 - x0;  // dx02 is guaranteed to be >0
+  int16_t dy02 = 0;
+  int16_t fy02 = (y2 - y0);
+  // unroll divmod here, this is sadly much faster
+  while (fy02 >= dx02) { ++dy02; fy02 -= dx02; }
+  while (fy02 <= -dx02) { --dy02; fy02 += dx02; }
 
   // the top and bottom variable names are a misnomer, as they can also
   // be inverted. the "upside down" case is handled by checking in the
