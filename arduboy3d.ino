@@ -89,27 +89,26 @@ class Stars {
   }
 };
 
-int32_t angle_A_ = 0, angle_B_ = 0;
-int16_t distance_ = 1024;
+int32_t angle_A_ = 0, angle_B_ = 0, angle_C_ = 0;
 int16_t scale_ = 4096;
 
 void ReadInput() {
 //  static int32_t A_target = 100000, B_target = 50000;
-  static int32_t A_target = 0, B_target = 0;
+  static int32_t A_target = 0, B_target = 0, C_target = 0;
   static const int32_t kTurnSpeed = 1000;
 
   if (arduboy_.pressed(A_BUTTON)) {
     if (arduboy_.pressed(LEFT_BUTTON)) {
-      scale_ -= 10;
+      C_target -= kTurnSpeed;
     }
     if (arduboy_.pressed(RIGHT_BUTTON)) {
-      scale_ += 10;
+      C_target += kTurnSpeed;
     }
     if (arduboy_.pressed(UP_BUTTON)) {
-      distance_ += 3;
+      scale_ += 10;
     }
     if (arduboy_.pressed(DOWN_BUTTON)) {
-      distance_ -= 3;
+      scale_ -= 10;
     }
   } else {
     if (arduboy_.pressed(LEFT_BUTTON)) {
@@ -128,24 +127,65 @@ void ReadInput() {
 
   angle_A_ += (A_target - angle_A_) >> 6;
   angle_B_ += (B_target - angle_B_) >> 6;
+  angle_C_ += (C_target - angle_C_) >> 6;
+}
+
+static const uint8_t NVERTS = sizeof(mesh_vertices) / 3;
+static const uint8_t NFACES = sizeof(mesh_faces) / 3;
+static Vec216 verts[NVERTS];  // rotated, projected screen space vertices
+
+// down-convert signed 1.10 precision to signed 0.7 precision
+// (scaling down from -1024..1024 to -127..127)
+static int8_t RescaleR(int16_t x) {
+  return ((uint32_t) x*127 + 512) >> 10;
 }
 
 void DrawObject() {
-  static const uint8_t NVERTS = sizeof(mesh_vertices) / 3;
-  static const uint8_t NFACES = sizeof(mesh_faces) / 3;
-  static Vec216 verts[NVERTS];  // rotated, projected screen space vertices
-
   // construct rotation matrix
-  int16_t cA, sA, cB, sB;
+  int16_t cA, sA, cB, sB, cC, sC;
 
   GetSinCos((angle_A_ >> 6) & 1023, &sA, &cA);
   GetSinCos((angle_B_ >> 6) & 1023, &sB, &cB);
+  GetSinCos((angle_C_ >> 6) & 1023, &sC, &cC);
+
+  //     [ cA*cB, -cA*sB*sC + cC*sA, cA*cC*sB + sA*sC],
+  // R = [-cB*sA,  cA*cC + sA*sB*sC, cA*sC - cC*sA*sB],
+  //     [   -sB,            -cB*sC,            cB*cC]])
 
   // local coordinate frame given rotation values
-  // 1.8 fixed point format rotation matrix
-  Vec388 Fx(cB, (int32_t) -cA*sB >> 8, (int32_t) sA*sB >> 8),
-         Fy(sB, (int32_t) cA*cB >> 8, (int32_t) -sA*cB >> 8),
-         Fz(0, sA, cA);
+  // spend some time up front to get an accurate rotation matrix before
+  // rounding to 0.7 fixed point
+  // the 32-bit math is only done once per frame, and then we can do
+  // all the per-vertex stuff in 8-bit math 
+  Vec38 Fx(
+      RescaleR((int32_t) cA*cB >> 10),
+      RescaleR(((int32_t) -cA*sB*sC >> 10) + (int32_t) cC*sA >> 10),
+      RescaleR(((int32_t) cA*cC*sB >> 10) + (int32_t) sA*sC >> 10));
+  Vec38 Fy(
+      RescaleR((int32_t) -cB*sA >> 10),
+      RescaleR((int32_t) cA*cC + ((int32_t) sA*sB*sC >> 10) >> 10),
+      RescaleR((int32_t) cA*sC - ((int32_t) cC*sA*sB >> 10) >> 10));
+  Vec38 Fz(
+      RescaleR(-sB),
+      RescaleR((int32_t) -cB*sC >> 10),
+      RescaleR((int32_t) cB*cC >> 10));
+
+#if 1
+  Serial.println(F("A: "));
+  Serial.print(angle_A_); Serial.print(' ');
+  Serial.print(cA); Serial.print(' ');
+  Serial.print(sA); Serial.print('\n');
+  Serial.println(F("matrix:"));
+  Serial.print(Fx.x); Serial.print(' ');
+  Serial.print(Fx.y); Serial.print(' ');
+  Serial.print(Fx.z); Serial.print('\n');
+  Serial.print(Fy.x); Serial.print(' ');
+  Serial.print(Fy.y); Serial.print(' ');
+  Serial.print(Fy.z); Serial.print('\n');
+  Serial.print(Fz.x); Serial.print(' ');
+  Serial.print(Fz.y); Serial.print(' ');
+  Serial.print(Fz.z); Serial.print('\n');
+#endif
 
   // rotate and project all vertices
   for (uint16_t i = 0, j = 0; i < NVERTS; i++, j += 3) {
@@ -153,7 +193,7 @@ void DrawObject() {
         pgm_read_byte_near(mesh_vertices + j),
         pgm_read_byte_near(mesh_vertices + j + 1),
         pgm_read_byte_near(mesh_vertices + j + 2));
-    Vec388 world_vert(  // FIXME: use Vec38 here?
+    Vec38 world_vert(  // FIXME: use Vec38 here?
         Fx.dot(obj_vert),
         Fy.dot(obj_vert),
         Fz.dot(obj_vert));
@@ -182,7 +222,7 @@ void DrawObject() {
         pgm_read_byte_near(mesh_normals + jf),
         pgm_read_byte_near(mesh_normals + jf + 1),
         pgm_read_byte_near(mesh_normals + jf + 2));
-    Vec388 world_normal(
+    Vec38 world_normal(
         Fx.dot(obj_normal),
         Fy.dot(obj_normal),
         Fz.dot(obj_normal));
