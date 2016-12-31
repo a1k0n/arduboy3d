@@ -3,9 +3,9 @@
 #include "heap.h"
 
 int main() {
-  uint8_t heap[128], heapsiz = 0;
-  int8_t z[128];
-  for (int i = 0; i < 10; i++) {
+  uint8_t heap[200], heapsiz = 0;
+  int8_t z[200];
+  for (int i = 0; i < 200; i++) {
     int8_t r = rand();
     heapsiz = HeapPush(r, heap, z, heapsiz);
   }

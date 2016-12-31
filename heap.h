@@ -22,13 +22,13 @@ static uint8_t HeapPush(int8_t value, uint8_t *heap,
 
 // returns new heap size
 static uint8_t HeapPop(uint8_t *heap,
-    int8_t *compare_values, uint8_t heap_siz) {
+    const int8_t *compare_values, uint8_t heap_siz) {
   heap_siz --;
   heap[0] = heap[heap_siz];  // last element temporarily becomes root
   uint8_t heapptr = 0;
   int8_t newroot_value = compare_values[heap[0]];
   for (;;) {
-    uint8_t child = (heapptr << 1) + 1;  // left child
+    uint16_t child = (heapptr << 1) + 1;  // left child
     if (child >= heap_siz) break;
     // find largest child compare_value
     int8_t child_compare = compare_values[heap[child]];

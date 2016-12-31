@@ -1,6 +1,7 @@
 #include <Arduboy2.h>
 #include <avr/pgmspace.h>
 #include "draw.h"
+#include "heap.h"
 #include "sincos.h"
 #include "vec.h"
 #include "teapot.h"
@@ -9,6 +10,7 @@
 Arduboy2 arduboy_;
 uint8_t *screen_;
 
+#ifdef _PROFILE
 static const size_t PROFILEBUFSIZ = 32;
 static volatile uint8_t profilebuf_[PROFILEBUFSIZ];
 static volatile uint8_t profileptr_ = 0;
@@ -38,6 +40,7 @@ ISR(TIMER4_OVF_vect) {
     }
   }
 }
+#endif
 
 void setup() {
   // put your setup code here, to run once:
@@ -45,10 +48,12 @@ void setup() {
   screen_ = arduboy_.getBuffer();
   arduboy_.setFrameRate(60);
 
+#ifdef _PROFILE
   // set up timer interrupt, once every ... whatever
   TCCR4A = 0b00000000;    // no pwm, 
   TCCR4B = 0x08;    // clk / 128
   TIMSK4 = 0b00000100;  // enable ints
+#endif
 }
 
 uint16_t frame_ = 0;
@@ -128,7 +133,8 @@ void ReadInput() {
 void DrawObject() {
   static const uint8_t NVERTS = sizeof(mesh_vertices) / 3;
   static const uint8_t NFACES = sizeof(mesh_faces) / 3;
-  Vec216 verts[NVERTS];  // rotated, projected screen space vertices
+  static Vec216 verts[NVERTS];  // rotated, projected screen space vertices
+  // static int8_t vertex_z[NVERTS];  // preserved z coordinate for sorting
 
   // construct rotation matrix
   int16_t cA, sA, cB, sB;
@@ -137,16 +143,10 @@ void DrawObject() {
   GetSinCos((angle_B_ >> 6) & 1023, &sB, &cB);
 
   // local coordinate frame given rotation values
-  // 8.8 fixed point format rotation matrix
-#if 1
+  // 1.8 fixed point format rotation matrix
   Vec388 Fx(cB, (int32_t) -cA*sB >> 8, (int32_t) sA*sB >> 8),
          Fy(sB, (int32_t) cA*cB >> 8, (int32_t) -sA*cB >> 8),
          Fz(0, sA, cA);
-#else
-  Vec388 Fx(cA, 0, sA),
-         Fy(0, 256, 0),
-         Fz(-sA, 0, cA);
-#endif
 
   // rotate and project all vertices
   for (uint16_t i = 0, j = 0; i < NVERTS; i++, j += 3) {
@@ -154,25 +154,20 @@ void DrawObject() {
         pgm_read_byte_near(mesh_vertices + j),
         pgm_read_byte_near(mesh_vertices + j + 1),
         pgm_read_byte_near(mesh_vertices + j + 2));
-    Vec388 world_vert(  // FIXME: extend precision a bit here, no >>8?
+    Vec388 world_vert(  // FIXME: use Vec38 here?
         Fx.dot(obj_vert),
         Fy.dot(obj_vert),
         Fz.dot(obj_vert));
 
     world_vert.project(scale_, verts + i);
-#if 0
-    if (screen_coord.x >= 0 && screen_coord.x < 128*16
-        && screen_coord.y >= 0 && screen_coord.y <= 64*16) {
-itCud2
-
-      uint8_t x = screen_coord.x >> 4;
-      uint8_t y = screen_coord.y >> 4;
-      screen_[(y >> 3) * 128 + x] |= 1 << (y & 7);
-    }
-#endif
+    // vertex_z[i] = world_vert.z;
   }
 
-  // draw faces
+  // static uint8_t face_heap[NFACES/2 + 40];  // ... we're out of memory here
+  // uint8_t face_heap_siz = 0;
+  // static int8_t face_z[NFACES/2 + 40];
+
+  // back-face cull and sort faces
   for (uint16_t j = 0; j < NFACES * 3; j += 3) {
     uint8_t fa = pgm_read_byte_near(mesh_faces + j),
             fb = pgm_read_byte_near(mesh_faces + j + 1),
@@ -182,6 +177,42 @@ itCud2
     if ((int32_t) sa.x * sb.y > (int32_t) sa.y * sb.x) {  // check winding order
       continue;  // back-facing
     }
+
+    /*
+    // push minimum z coordinate of this face onto face_heap
+    // (or should it be the maximum?)
+    int8_t this_face_z = vertex_z[fa];
+    if (vertex_z[fb] < this_face_z) this_face_z = vertex_z[fb];
+    if (vertex_z[fc] < this_face_z) this_face_z = vertex_z[fc];
+    face_heap_siz = HeapPush(this_face_z, face_heap, face_z, face_heap_siz);
+  }
+
+#if 0
+  Serial.print(F("heap siz "));
+  Serial.print(face_heap_siz);
+  Serial.print('/');
+  Serial.print(NFACES);
+  Serial.print(F(": "));
+  for (uint8_t i = 0; i < face_heap_siz; i++) {
+    Serial.print(face_heap[i]);
+    Serial.print('[');
+    Serial.print(face_z[face_heap[i]]);
+    Serial.print(F("] "));
+  }
+  Serial.print('\n');
+  return;
+#endif
+
+  // draw faces from heap
+  while (face_heap_siz > 0) {
+    // draw face at top of heap
+    uint16_t j = (uint16_t) face_heap[0] * 3;
+    uint8_t fa = pgm_read_byte_near(mesh_faces + j),
+            fb = pgm_read_byte_near(mesh_faces + j + 1),
+            fc = pgm_read_byte_near(mesh_faces + j + 2);
+    face_heap_siz = HeapPop(face_heap, face_z, face_heap_siz);
+    */
+
 #if 1
     Vec38 obj_normal(
         pgm_read_byte_near(mesh_normals + j),
@@ -206,11 +237,14 @@ itCud2
         1 << ((verts[fa].y >> 4) & 7);
     }
 #endif
+
+#ifdef _PROFILE
     // poll for profiling data
     if (profileptr_ == PROFILEBUFSIZ) {
       SerialUSB.write((char*) profilebuf_, PROFILEBUFSIZ);
       profileptr_ = 0;
     }
+#endif
   }
 }
 
@@ -236,7 +270,6 @@ void loop() {
 
     ReadInput();
     DrawObject();
-    arduboy_.display(true);
     ++frame_;
     unsigned long dt = micros() - t0_;
     int fps = 100000UL * frame_ / (dt / 100);
@@ -245,5 +278,6 @@ void loop() {
     arduboy_.write('.');
     arduboy_.print(fps % 10);
     arduboy_.print(F(" FPS"));
+    arduboy_.display(true);
   }
 }
