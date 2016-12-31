@@ -69,7 +69,7 @@ def ConvertObj(infile):
     objname = 'mesh'  # fixed name for now
     vcenter = (np.max(verts, axis=0) + np.min(verts, axis=0)) / 2.0
     verts -= vcenter
-    verts = np.round(verts*127 / np.max(np.abs(verts))).astype(np.int8)
+    verts = np.round(verts*127 / np.max(np.linalg.norm(verts, axis=1))).astype(np.int8)
     verts, faces = MergeVertices(verts, faces)
 
     # sort faces/normals by z coord
