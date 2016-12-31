@@ -1,7 +1,6 @@
 #include <Arduboy2.h>
 #include <avr/pgmspace.h>
 #include "draw.h"
-#include "heap.h"
 #include "sincos.h"
 #include "vec.h"
 #include "teapot.h"
@@ -135,7 +134,6 @@ void DrawObject() {
   static const uint8_t NVERTS = sizeof(mesh_vertices) / 3;
   static const uint8_t NFACES = sizeof(mesh_faces) / 3;
   static Vec216 verts[NVERTS];  // rotated, projected screen space vertices
-  // static int8_t vertex_z[NVERTS];  // preserved z coordinate for sorting
 
   // construct rotation matrix
   int16_t cA, sA, cB, sB;
@@ -164,10 +162,6 @@ void DrawObject() {
     // vertex_z[i] = world_vert.z;
   }
 
-  // static uint8_t face_heap[NFACES/2 + 40];  // ... we're out of memory here
-  // uint8_t face_heap_siz = 0;
-  // static int8_t face_z[NFACES/2 + 40];
-
   // back-face cull and sort faces
   for (uint16_t j = 0; j < NFACES * 3; j += 3) {
     uint16_t jf = j;
@@ -182,41 +176,6 @@ void DrawObject() {
     if ((int32_t) sa.x * sb.y > (int32_t) sa.y * sb.x) {  // check winding order
       continue;  // back-facing
     }
-
-    /*
-    // push minimum z coordinate of this face onto face_heap
-    // (or should it be the maximum?)
-    int8_t this_face_z = vertex_z[fa];
-    if (vertex_z[fb] < this_face_z) this_face_z = vertex_z[fb];
-    if (vertex_z[fc] < this_face_z) this_face_z = vertex_z[fc];
-    face_heap_siz = HeapPush(this_face_z, face_heap, face_z, face_heap_siz);
-  }
-
-#if 0
-  Serial.print(F("heap siz "));
-  Serial.print(face_heap_siz);
-  Serial.print('/');
-  Serial.print(NFACES);
-  Serial.print(F(": "));
-  for (uint8_t i = 0; i < face_heap_siz; i++) {
-    Serial.print(face_heap[i]);
-    Serial.print('[');
-    Serial.print(face_z[face_heap[i]]);
-    Serial.print(F("] "));
-  }
-  Serial.print('\n');
-  return;
-#endif
-
-  // draw faces from heap
-  while (face_heap_siz > 0) {
-    // draw face at top of heap
-    uint16_t j = (uint16_t) face_heap[0] * 3;
-    uint8_t fa = pgm_read_byte_near(mesh_faces + j),
-            fb = pgm_read_byte_near(mesh_faces + j + 1),
-            fc = pgm_read_byte_near(mesh_faces + j + 2);
-    face_heap_siz = HeapPop(face_heap, face_z, face_heap_siz);
-    */
 
 #if 1
     Vec38 obj_normal(
@@ -262,17 +221,6 @@ void loop() {
   }
   if (arduboy_.nextFrame()) {
     stars_.Draw();
-#if 0
-    // big polygon clipping test
-    uint8_t pat[] = {0xff, 0xff, 0xff, 0xff};
-    int16_t x = ((frame_ & 511) - 256) * 16;
-    FillTriangle(
-        -1024 - x, 32*16,
-        - x, -512,
-        1024 - x, 1023,
-        pat, screen_);
-#endif
-
     ReadInput();
     DrawObject();
     ++frame_;
