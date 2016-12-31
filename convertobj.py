@@ -71,6 +71,12 @@ def ConvertObj(infile):
     verts -= vcenter
     verts = np.round(verts*127 / np.max(np.abs(verts))).astype(np.int8)
     verts, faces = MergeVertices(verts, faces)
+
+    # sort faces/normals by z coord
+    fns = sorted(zip(faces, normals), key=lambda fn: verts[fn[0][0]][2])
+    faces = np.array([f[0] for f in fns])
+    normals = np.array([f[1] for f in fns])
+
     normal_scale = np.max(normals) / 127.0
     normals = (normals*127 / np.max(np.abs(normals))).astype(np.int8)
     # note: object is resized for maximum precision within an 8 bit space

@@ -95,7 +95,8 @@ int16_t distance_ = 1024;
 int16_t scale_ = 4096;
 
 void ReadInput() {
-  static int32_t A_target = 100000, B_target = 50000;
+//  static int32_t A_target = 100000, B_target = 50000;
+  static int32_t A_target = 0, B_target = 0;
   static const int32_t kTurnSpeed = 1000;
 
   if (arduboy_.pressed(A_BUTTON)) {
@@ -169,9 +170,13 @@ void DrawObject() {
 
   // back-face cull and sort faces
   for (uint16_t j = 0; j < NFACES * 3; j += 3) {
-    uint8_t fa = pgm_read_byte_near(mesh_faces + j),
-            fb = pgm_read_byte_near(mesh_faces + j + 1),
-            fc = pgm_read_byte_near(mesh_faces + j + 2);
+    uint16_t jf = j;
+    if (Fz.z < 0) {  // reverse rendering order if z is away
+      jf = NFACES*3 - 3 - jf;
+    }
+    uint8_t fa = pgm_read_byte_near(mesh_faces + jf),
+            fb = pgm_read_byte_near(mesh_faces + jf + 1),
+            fc = pgm_read_byte_near(mesh_faces + jf + 2);
     Vec216 sa = verts[fb] - verts[fa];
     Vec216 sb = verts[fc] - verts[fa];
     if ((int32_t) sa.x * sb.y > (int32_t) sa.y * sb.x) {  // check winding order
@@ -215,9 +220,9 @@ void DrawObject() {
 
 #if 1
     Vec38 obj_normal(
-        pgm_read_byte_near(mesh_normals + j),
-        pgm_read_byte_near(mesh_normals + j + 1),
-        pgm_read_byte_near(mesh_normals + j + 2));
+        pgm_read_byte_near(mesh_normals + jf),
+        pgm_read_byte_near(mesh_normals + jf + 1),
+        pgm_read_byte_near(mesh_normals + jf + 2));
     Vec388 world_normal(
         Fx.dot(obj_normal),
         Fy.dot(obj_normal),
