@@ -99,10 +99,10 @@ void ReadInput() {
 
   if (arduboy_.pressed(A_BUTTON)) {
     if (arduboy_.pressed(LEFT_BUTTON)) {
-      C_target -= kTurnSpeed;
+      A_target -= kTurnSpeed;
     }
     if (arduboy_.pressed(RIGHT_BUTTON)) {
-      C_target += kTurnSpeed;
+      A_target += kTurnSpeed;
     }
     if (arduboy_.pressed(UP_BUTTON)) {
       scale_ += 10;
@@ -118,10 +118,10 @@ void ReadInput() {
       B_target += kTurnSpeed;
     }
     if (arduboy_.pressed(UP_BUTTON)) {
-      A_target -= kTurnSpeed;
+      C_target -= kTurnSpeed;
     }
     if (arduboy_.pressed(DOWN_BUTTON)) {
-      A_target += kTurnSpeed;
+      C_target += kTurnSpeed;
     }
   }
 
@@ -130,9 +130,7 @@ void ReadInput() {
   angle_C_ += (C_target - angle_C_) >> 6;
 }
 
-static const uint8_t NVERTS = sizeof(mesh_vertices) / 3;
-static const uint8_t NFACES = sizeof(mesh_faces) / 3;
-static Vec216 verts[NVERTS];  // rotated, projected screen space vertices
+static Vec216 verts[mesh_NVERTS];  // rotated, projected screen space vertices
 
 // down-convert signed 1.10 precision to signed 0.7 precision
 // (scaling down from -1024..1024 to -127..127)
@@ -148,9 +146,10 @@ void DrawObject() {
   GetSinCos((angle_B_ >> 6) & 1023, &sB, &cB);
   GetSinCos((angle_C_ >> 6) & 1023, &sC, &cC);
 
-  //     [ cA*cB, -cA*sB*sC + cC*sA, cA*cC*sB + sA*sC],
-  // R = [-cB*sA,  cA*cC + sA*sB*sC, cA*sC - cC*sA*sB],
-  //     [   -sB,            -cB*sC,            cB*cC]])
+  // rotate about X axis by C, then Y axis by B, then Z axis by A
+  //     [            cA*cB,             cB*sA,    sB]
+  // R = [-cA*sB*sC - cC*sA,  cA*cC - sA*sB*sC, cB*sC]
+  //     [-cA*cC*sB + sA*sC, -cA*sC - cC*sA*sB, cB*cC]
 
   // local coordinate frame given rotation values
   // spend some time up front to get an accurate rotation matrix before
@@ -159,18 +158,32 @@ void DrawObject() {
   // all the per-vertex stuff in 8-bit math 
   Vec38 Fx(
       RescaleR((int32_t) cA*cB >> 10),
-      RescaleR(((int32_t) -cA*sB*sC >> 10) + (int32_t) cC*sA >> 10),
-      RescaleR(((int32_t) cA*cC*sB >> 10) + (int32_t) sA*sC >> 10));
+      RescaleR((int32_t) cB*sA >> 10),
+      RescaleR(sB));
   Vec38 Fy(
-      RescaleR((int32_t) -cB*sA >> 10),
-      RescaleR((int32_t) cA*cC + ((int32_t) sA*sB*sC >> 10) >> 10),
-      RescaleR((int32_t) cA*sC - ((int32_t) cC*sA*sB >> 10) >> 10));
+      RescaleR(((int32_t) -cA*sB*sC >> 10) - (int32_t) cC*sA >> 10),
+      RescaleR((int32_t) cA*cC - ((int32_t) sA*sB*sC >> 10) >> 10),
+      RescaleR((int32_t) cB*sC >> 10));
   Vec38 Fz(
-      RescaleR(-sB),
-      RescaleR((int32_t) -cB*sC >> 10),
+      RescaleR(((int32_t) -cA*cC*sB >> 10) + (int32_t) sA*sC >> 10),
+      RescaleR((int32_t) -cA*sC - ((int32_t) cC*sA*sB >> 10) >> 10),
       RescaleR((int32_t) cB*cC >> 10));
 
-#if 1
+  int8_t sortaxis = 0, sortaxisz = Fz.x;
+  if (abs(Fz.y) > abs(sortaxisz)) {
+    sortaxis = 1;
+    sortaxisz = Fz.y;
+  }
+  if (abs(Fz.z) > abs(sortaxisz)) {
+    sortaxis = 2;
+    sortaxisz = Fz.z;
+  }
+  arduboy_.setCursor(0, 8);
+  arduboy_.print(sortaxis);
+  arduboy_.write(' ');
+  arduboy_.print(sortaxisz);
+
+#if 0
   Serial.println(F("A: "));
   Serial.print(angle_A_); Serial.print(' ');
   Serial.print(cA); Serial.print(' ');
@@ -188,7 +201,7 @@ void DrawObject() {
 #endif
 
   // rotate and project all vertices
-  for (uint16_t i = 0, j = 0; i < NVERTS; i++, j += 3) {
+  for (uint16_t i = 0, j = 0; i < mesh_NVERTS; i++, j += 3) {
     Vec38 obj_vert(
         pgm_read_byte_near(mesh_vertices + j),
         pgm_read_byte_near(mesh_vertices + j + 1),
@@ -203,11 +216,18 @@ void DrawObject() {
   }
 
   // back-face cull and sort faces
-  for (uint16_t j = 0; j < NFACES * 3; j += 3) {
-    uint16_t jf = j;
-    if (Fz.z < 0) {  // reverse rendering order if z is away
-      jf = NFACES*3 - 3 - jf;
+  for (uint16_t i = 0; i < mesh_NFACES; i++) {
+    uint16_t jf = i;
+    // use face sort order depending on which axis is most facing toward camera
+    if (sortaxisz < 0) {
+      jf = mesh_NFACES - 1 - i;
     }
+    if (sortaxis == 1) {
+      jf = pgm_read_byte_near(mesh_ysort_faces + jf);
+    } else if (sortaxis == 2) {
+      jf = pgm_read_byte_near(mesh_zsort_faces + jf);
+    }
+    jf *= 3;
     uint8_t fa = pgm_read_byte_near(mesh_faces + jf),
             fb = pgm_read_byte_near(mesh_faces + jf + 1),
             fc = pgm_read_byte_near(mesh_faces + jf + 2);

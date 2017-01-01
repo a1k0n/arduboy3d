@@ -3,7 +3,7 @@
 #include "./sincos.h"
 
 int main() {
-  for (int i = -1024; i <= 1024; i++) {
+  for (int i = -2048; i <= 2048; i++) {
     int16_t expected = round(1024 * sin(i * M_PI * 2 / 1024.0));
     int16_t actual = LookupSin(i);
     if (expected != actual) {
