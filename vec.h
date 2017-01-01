@@ -27,7 +27,7 @@ struct Vec38 {
     return result16 >> 8;
   }
 
-  void project(int16_t scale, Vec216 *out) {
+  void project(int16_t scaleoffset, Vec216 *out) {
     // projection is a precomputed lookup table, with a fixed distance from
     // camera of 1024 and an assumed z range of -128..127
 
@@ -40,7 +40,7 @@ struct Vec38 {
     // another term (z*z >> 10) adds a bit of accuracy but you can't see it
     // anyway on this tiny screen
     int16_t ooz = 1024 + z;
-    ooz += scale - 4096;  // fudge the scale here
+    ooz += scaleoffset;  // fudge the scale here
     out->x = 64*16 + ((int32_t) ooz * x >> 8);
     out->y = 32*16 - ((int32_t) ooz * y >> 8);
   }

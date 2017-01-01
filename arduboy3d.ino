@@ -90,19 +90,22 @@ class Stars {
 };
 
 int32_t angle_A_ = 0, angle_B_ = 0, angle_C_ = 0;
-int16_t scale_ = 4096;
+int16_t scale_ = 200;
 
 void ReadInput() {
 //  static int32_t A_target = 100000, B_target = 50000;
   static int32_t A_target = 0, B_target = 0, C_target = 0;
   static const int32_t kTurnSpeed = 1000;
+  static bool manual_control = false;
 
   if (arduboy_.pressed(A_BUTTON)) {
     if (arduboy_.pressed(LEFT_BUTTON)) {
       A_target -= kTurnSpeed;
+      manual_control = true;
     }
     if (arduboy_.pressed(RIGHT_BUTTON)) {
       A_target += kTurnSpeed;
+      manual_control = true;
     }
     if (arduboy_.pressed(UP_BUTTON)) {
       scale_ += 10;
@@ -113,16 +116,26 @@ void ReadInput() {
   } else {
     if (arduboy_.pressed(LEFT_BUTTON)) {
       B_target -= kTurnSpeed;
+      manual_control = true;
     }
     if (arduboy_.pressed(RIGHT_BUTTON)) {
       B_target += kTurnSpeed;
+      manual_control = true;
     }
     if (arduboy_.pressed(UP_BUTTON)) {
       C_target -= kTurnSpeed;
+      manual_control = true;
     }
     if (arduboy_.pressed(DOWN_BUTTON)) {
       C_target += kTurnSpeed;
+      manual_control = true;
     }
+  }
+
+  if (!manual_control) {
+    A_target += 499;
+    B_target += 331;
+    C_target += 229;
   }
 
   angle_A_ += (A_target - angle_A_) >> 6;
@@ -178,27 +191,6 @@ void DrawObject() {
     sortaxis = 2;
     sortaxisz = Fz.z;
   }
-  arduboy_.setCursor(0, 8);
-  arduboy_.print(sortaxis);
-  arduboy_.write(' ');
-  arduboy_.print(sortaxisz);
-
-#if 0
-  Serial.println(F("A: "));
-  Serial.print(angle_A_); Serial.print(' ');
-  Serial.print(cA); Serial.print(' ');
-  Serial.print(sA); Serial.print('\n');
-  Serial.println(F("matrix:"));
-  Serial.print(Fx.x); Serial.print(' ');
-  Serial.print(Fx.y); Serial.print(' ');
-  Serial.print(Fx.z); Serial.print('\n');
-  Serial.print(Fy.x); Serial.print(' ');
-  Serial.print(Fy.y); Serial.print(' ');
-  Serial.print(Fy.z); Serial.print('\n');
-  Serial.print(Fz.x); Serial.print(' ');
-  Serial.print(Fz.y); Serial.print(' ');
-  Serial.print(Fz.z); Serial.print('\n');
-#endif
 
   // rotate and project all vertices
   for (uint16_t i = 0, j = 0; i < mesh_NVERTS; i++, j += 3) {
