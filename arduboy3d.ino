@@ -90,7 +90,7 @@ class Stars {
 };
 
 int32_t angle_A_ = 0, angle_B_ = 0, angle_C_ = 0;
-int16_t scale_ = 200;
+int16_t scale_ = 1024 + 200;
 
 void ReadInput() {
 //  static int32_t A_target = 100000, B_target = 50000;
@@ -169,43 +169,49 @@ void DrawObject() {
   // rounding to 0.7 fixed point
   // the 32-bit math is only done once per frame, and then we can do
   // all the per-vertex stuff in 8-bit math 
-  Vec38 Fx(
-      RescaleR((int32_t) cA*cB >> 10),
-      RescaleR((int32_t) cB*sA >> 10),
-      RescaleR(sB));
-  Vec38 Fy(
-      RescaleR(((int32_t) -cA*sB*sC >> 10) - (int32_t) cC*sA >> 10),
-      RescaleR((int32_t) cA*cC - ((int32_t) sA*sB*sC >> 10) >> 10),
-      RescaleR((int32_t) cB*sC >> 10));
-  Vec38 Fz(
-      RescaleR(((int32_t) -cA*cC*sB >> 10) + (int32_t) sA*sC >> 10),
-      RescaleR((int32_t) -cA*sC - ((int32_t) cC*sA*sB >> 10) >> 10),
-      RescaleR((int32_t) cB*cC >> 10));
+  Mat338 rotation_matrix(Vec38(
+        RescaleR((int32_t) cA*cB >> 10),
+        RescaleR((int32_t) cB*sA >> 10),
+        RescaleR(sB)),
+      Vec38(
+        RescaleR(((int32_t) -cA*sB*sC >> 10) - (int32_t) cC*sA >> 10),
+        RescaleR((int32_t) cA*cC - ((int32_t) sA*sB*sC >> 10) >> 10),
+        RescaleR((int32_t) cB*sC >> 10)),
+      Vec38(
+        RescaleR(((int32_t) -cA*cC*sB >> 10) + (int32_t) sA*sC >> 10),
+        RescaleR((int32_t) -cA*sC - ((int32_t) cC*sA*sB >> 10) >> 10),
+        RescaleR((int32_t) cB*cC >> 10)));
 
-  int8_t sortaxis = 0, sortaxisz = Fz.x;
-  if (abs(Fz.y) > abs(sortaxisz)) {
+  int8_t sortaxis = 0, sortaxisz = rotation_matrix.z.x;
+  if (abs(rotation_matrix.z.y) > abs(sortaxisz)) {
     sortaxis = 1;
-    sortaxisz = Fz.y;
+    sortaxisz = rotation_matrix.z.y;
   }
-  if (abs(Fz.z) > abs(sortaxisz)) {
+  if (abs(rotation_matrix.z.z) > abs(sortaxisz)) {
     sortaxis = 2;
-    sortaxisz = Fz.z;
+    sortaxisz = rotation_matrix.z.z;
   }
+
+  rotation_matrix.RotateAndProject(mesh_vertices, mesh_NVERTS, scale_, verts);
 
   // rotate and project all vertices
-  for (uint16_t i = 0, j = 0; i < mesh_NVERTS; i++, j += 3) {
-    Vec38 obj_vert(
-        pgm_read_byte_near(mesh_vertices + j),
-        pgm_read_byte_near(mesh_vertices + j + 1),
-        pgm_read_byte_near(mesh_vertices + j + 2));
-    Vec38 world_vert(  // FIXME: use Vec38 here?
-        Fx.dot(obj_vert),
-        Fy.dot(obj_vert),
-        Fz.dot(obj_vert));
+  /*
+  {
+    Vec216 *vertptr = verts;
+    for (uint16_t j = 0; j < 3*mesh_NVERTS; j += 3) {
+      Vec38 obj_vert(
+          pgm_read_byte_near(mesh_vertices + j),
+          pgm_read_byte_near(mesh_vertices + j + 1),
+          pgm_read_byte_near(mesh_vertices + j + 2));
+      Vec38 world_vert(
+          Fx.dot(obj_vert),
+          Fy.dot(obj_vert),
+          Fz.dot(obj_vert));
 
-    world_vert.project(scale_, verts + i);
-    // vertex_z[i] = world_vert.z;
+      world_vert.project(scale_, vertptr++);
+    }
   }
+  */
 
   // back-face cull and sort faces
   for (uint16_t i = 0; i < mesh_NFACES; i++) {
@@ -229,16 +235,7 @@ void DrawObject() {
       continue;  // back-facing
     }
 
-#if 1
-    Vec38 obj_normal(
-        pgm_read_byte_near(mesh_normals + jf),
-        pgm_read_byte_near(mesh_normals + jf + 1),
-        pgm_read_byte_near(mesh_normals + jf + 2));
-    Vec38 world_normal(
-        Fx.dot(obj_normal),
-        Fy.dot(obj_normal),
-        Fz.dot(obj_normal));
-    int8_t illum = (world_normal.x + world_normal.y + 4 * world_normal.z) >> 5;
+    int8_t illum = rotation_matrix.CalcIllumination(mesh_normals + jf);
     uint8_t pat[4];
     GetDitherPattern(illum, pat);
     FillTriangle(
@@ -246,14 +243,6 @@ void DrawObject() {
         verts[fb].x, verts[fb].y,
         verts[fc].x, verts[fc].y,
         pat, screen_);
-#else
-    if (verts[fa].x >= 0 && verts[fa].x < 16*128
-        && verts[fa].y >= 0 && verts[fa].y <= 16*64) {
-      screen_[(verts[fa].y >> 7) * 128 + (verts[fa].x >> 4)] |=
-        1 << ((verts[fa].y >> 4) & 7);
-    }
-#endif
-
 #ifdef _PROFILE
     // poll for profiling data
     if (profileptr_ == PROFILEBUFSIZ) {
@@ -266,7 +255,7 @@ void DrawObject() {
 
 Stars stars_;
 
-static unsigned long t0_ = ~0L;
+static unsigned long t0_ = ~0UL;
 void loop() {
   if (t0_ == ~0L) {
     t0_ = micros();

@@ -181,39 +181,35 @@ void FillTriangle(
   // yt/ytf are stored in fractions of (x1-x0)
   // so
   int16_t dx01 = x1 - x0;
-  int16_t dy01, fy01;
-  if (dx01) {
-    if (x0 >= 0) {
-      // round up to the next 16
-      int8_t dx0 = (16 - x0) & 15;
-      int16_t dyt = (dx0 * (y1 - y0)) >> 4;
-      int16_t dyb = (dx0 * (y2 - y0)) >> 4;
+  if (x0 >= 0) {
+    // round up to the next 16
+    int8_t dx0 = (16 - x0) & 15;
+    int16_t dyt = (dx0 * (y1 - y0)) >> 4;
+    int16_t dyb = (dx0 * (y2 - y0)) >> 4;
+    if (dx01) {
       // unroll divmod here, as it's a lot faster in the common case
       while (dyt >= dx01) { ++yt; dyt -= dx01; }
       while (dyt <= -dx01) { --yt; dyt += dx01; }
       ytf += dyt;
-
-      while (dyb >= dx02) { ++yb; dyb -= dx02; }
-      while (dyb <= -dx02) { --yb; dyb += dx02; }
-      ybf += dyb;
-      x0 += dx0;
-    } else {
-      // if x0 is off the left edge of the screen, advance all the way to
-      // the left edge of the screen
-      int32_t dx0 = -x0;
-      int32_t dyt = (dx0 * (y1 - y0)) >> 4;
-      int32_t dyb = (dx0 * (y2 - y0)) >> 4;
-      yt += dyt / dx01;
-      ytf += dyt % dx01;
-      yb += dyb / dx02;
-      ybf += dyb % dx02;
-      x0 = 0;
     }
 
-    dy01 = 0;
-    fy01 = y1 - y0;
-    while (fy01 >= dx01) { ++dy01; fy01 -= dx01; }
-    while (fy01 <= -dx01) { --dy01; fy01 += dx01; }
+    while (dyb >= dx02) { ++yb; dyb -= dx02; }
+    while (dyb <= -dx02) { --yb; dyb += dx02; }
+    ybf += dyb;
+    x0 += dx0;
+  } else {
+    // if x0 is off the left edge of the screen, advance all the way to
+    // the left edge of the screen
+    int32_t dx0 = -x0;
+    int32_t dyt = (dx0 * (y1 - y0)) >> 4;
+    int32_t dyb = (dx0 * (y2 - y0)) >> 4;
+    if (dx01) {
+      yt += dyt / dx01;
+      ytf += dyt % dx01;
+    }
+    yb += dyb / dx02;
+    ybf += dyb % dx02;
+    x0 = 0;
   }
 
   // x0 is now aligned to a whole number of pixels,
@@ -228,26 +224,32 @@ void FillTriangle(
     // safe to modify x1 now as all slopes have been computed
     x1 = 128*16;
   }
-  while (x0 < x1) {
-    // now, we include the bottom pixel if ybf != 0, otherwise we don't
-    if (yt < yb) {
-      FillVLine(yt, yb - (ybf == 0 ? 1 : 0), pattern[pattern_offset], screen);
-    } else {
-      FillVLine(yb, yt - (ytf == 0 ? 1 : 0), pattern[pattern_offset], screen);
-    }
-    yt += dy01;
-    ytf += fy01;
-    if (ytf < 0) { yt--; ytf += dx01; }
-    if (ytf >= dx01) { yt++; ytf -= dx01; }
+  if (dx01) {
+    int16_t dy01 = 0, fy01 = y1 - y0;
+    while (fy01 >= dx01) { ++dy01; fy01 -= dx01; }
+    while (fy01 <= -dx01) { --dy01; fy01 += dx01; }
 
-    yb += dy02;
-    ybf += fy02;
-    if (ybf < 0) { yb--; ybf += dx02; }
-    if (ybf >= dx02) { yb++; ybf -= dx02; }
-    ++screen;
-    ++pattern_offset;
-    pattern_offset &= 3;
-    x0 += 16;
+    while (x0 < x1) {
+      // now, we include the bottom pixel if ybf != 0, otherwise we don't
+      if (yt < yb) {
+        FillVLine(yt, yb - (ybf == 0 ? 1 : 0), pattern[pattern_offset], screen);
+      } else {
+        FillVLine(yb, yt - (ytf == 0 ? 1 : 0), pattern[pattern_offset], screen);
+      }
+      yt += dy01;
+      ytf += fy01;
+      if (ytf < 0) { yt--; ytf += dx01; }
+      if (ytf >= dx01) { yt++; ytf -= dx01; }
+
+      yb += dy02;
+      ybf += fy02;
+      if (ybf < 0) { yb--; ybf += dx02; }
+      if (ybf >= dx02) { yb++; ybf -= dx02; }
+      ++screen;
+      ++pattern_offset;
+      pattern_offset &= 3;
+      x0 += 16;
+    }
   }
   if (x0 >= 128*16) {
     return;  // off right edge of screen
@@ -259,28 +261,31 @@ void FillTriangle(
   int16_t dy12;
   int16_t fy12;
   // we need to adjust yt, ytf for the new slope of (y2-y1)/(x2-x1)
-  if (dx12) {
-    if (x1 >= 0) {
-      // we're just making a sub-pixel adjustment
-      int8_t dx0 = x0 - x1;
-      int16_t dyt = (dx0 * (y2 - y1)) >> 4;
-      while (dyt >= dx12) { ++yt; dyt -= dx12; }
-      while (dyt <= -dx12) { --yt; dyt += dx12; }
-    } else {
-      // we're advancing to the left edge
-      int32_t dx0 = x0 - x1;
-      int32_t dyt = (dx0 * (y2 - y1)) >> 4;
-      yt += dyt / dx12;
-      ytf += dyt % dx12;
-    }
-
-    dy12 = 0;
-    fy12 = y2 - y1;
-    // we need to adjust yt, ytf for the new slope of (y2-y1)/(x2-x1)
-    // 18.2 -> 18.7
-    while (fy12 >= dx12) { ++dy12; fy12 -= dx12; }
-    while (fy12 <= -dx12) { --dy12; fy12 += dx12; }
+  if (dx12 == 0) {
+    // we're already done
+    return;
   }
+  if (x1 >= 0) {
+    // we're just making a sub-pixel adjustment
+    int8_t dx0 = x0 - x1;
+    int16_t dyt = (dx0 * (y2 - y1)) >> 4;
+    while (dyt >= dx12) { ++yt; dyt -= dx12; }
+    while (dyt <= -dx12) { --yt; dyt += dx12; }
+  } else {
+    // we're advancing to the left edge
+    int32_t dx0 = x0 - x1;
+    int32_t dyt = (dx0 * (y2 - y1)) >> 4;
+    yt += dyt / dx12;
+    ytf += dyt % dx12;
+  }
+
+  dy12 = 0;
+  fy12 = y2 - y1;
+  // we need to adjust yt, ytf for the new slope of (y2-y1)/(x2-x1)
+  // 18.2 -> 18.7
+  while (fy12 >= dx12) { ++dy12; fy12 -= dx12; }
+  while (fy12 <= -dx12) { --dy12; fy12 += dx12; }
+
   // draw 2nd trapezoid
   if (x2 > 128*16) {  // clip to right edge
     x2 = 128*16;
