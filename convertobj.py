@@ -75,11 +75,11 @@ def ConvertObj(infile):
     verts, faces = MergeVertices(verts, faces)
 
     # sort faces/normals by x,y,z coords
-    cfn = zip(face_centroid, faces, normals)
+    cfn = list(zip(face_centroid, faces, normals))
     x_sorted = sorted(cfn, key=lambda c: c[0][0])
     faces = np.array([f[1] for f in x_sorted])
     normals = np.array([f[2] for f in x_sorted])
-    ci = zip(x_sorted, range(len(x_sorted)))  # enumerate x-sorted faces
+    ci = list(zip(x_sorted, range(len(x_sorted))))  # enumerate x-sorted faces
     # get face indices in x-sorted list for y and z sorts
     y_sorted_idx = [c[1] for c in sorted(ci, key=lambda c: c[0][0][1])]
     z_sorted_idx = [c[1] for c in sorted(ci, key=lambda c: c[0][0][2])]
