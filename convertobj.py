@@ -12,10 +12,10 @@ def LoadObj(infile):
         line = line.strip().split()
         if len(line) > 1:
             if line[0] == 'v':  # vertex
-                v = np.array(map(float, line[1:]))
+                v = np.array([float(x) for x in  line[1:]])
                 verts.append(v)
             elif line[0] == 'vn':  # normal
-                v = np.array(map(float, line[1:]))
+                v = np.array([float(x) for x in line[1:]])
                 v /= np.linalg.norm(v)
                 obj_normals.append(v)
             elif line[0] == 'f':  # face
@@ -87,35 +87,36 @@ def ConvertObj(infile):
     normal_scale = np.max(normals) / 127.0
     normals = (normals*127 / np.max(np.abs(normals))).astype(np.int8)
     # note: object is resized for maximum precision within an 8 bit space
-    print 'static const uint16_t %s_NVERTS = %d;' % (objname, len(verts))
-    print 'static const uint16_t %s_NFACES = %d;\n' % (objname, len(faces))
+    print('static const uint16_t %s_NVERTS = %d;' % (objname, len(verts)))
+    print('static const uint16_t %s_NFACES = %d;\n' % (objname, len(faces)))
 
-    print 'static const int8_t %s_vertices[] PROGMEM = {  // xyz vertex' % (
-        objname)
-    print ', '.join(map(str, verts.flatten()))
-    print '};\n'
+    print('static const int8_t %s_vertices[] PROGMEM = {  // xyz vertex' % (
+        objname))
+    print(', '.join(map(str, verts.flatten())))
+    print('};\n')
 
     # note: and the normals are as well, which means they are denormalized
-    print 'static const float %s_normal_scale = %e;' % (objname, normal_scale)
-    print 'static const int8_t %s_normals[] PROGMEM = {  // xyz face normal' % (
-        objname)
-    print ', '.join(map(str, normals.flatten()))
-    print '};\n'
+    print('static const float %s_normal_scale = %e;' % (objname, normal_scale))
+    print('static const int8_t %s_normals[] PROGMEM = {  // xyz face normal' % (
+        objname))
+    print(', '.join(map(str, normals.flatten())))
+    print('};\n')
 
-    print 'static const uint%d_t %s_faces[] PROGMEM = {  // x-sorted vertex index' % (
-        (len(verts) > 255) and 16 or 8, objname)
-    print ', '.join(map(str, faces.flatten()))
-    print '};\n'
+    print('static const uint%d_t %s_faces[] PROGMEM = {  // x-sorted vertex index' % (
+        (len(verts) > 255) and 16 or 8, objname))
+    print(', '.join(map(str, faces.flatten())))
+    print('};\n')
 
-    print 'static const uint%d_t %s_ysort_faces[] PROGMEM = {  // y-sorted face index' % (
-        (len(faces) > 255) and 16 or 8, objname)
-    print ', '.join(map(str, y_sorted_idx))
-    print '};\n'
+    print('static const uint%d_t %s_ysort_faces[] PROGMEM = {  // y-sorted face index' % (
+        (len(faces) > 255) and 16 or 8, objname))
+    print(', '.join(map(str, y_sorted_idx)))
+    print('};\n')
 
-    print 'static const uint%d_t %s_zsort_faces[] PROGMEM = {  // z-sorted face index' % (
-        (len(faces) > 255) and 16 or 8, objname)
-    print ', '.join(map(str, z_sorted_idx))
-    print '};\n'
+    print('static const uint%d_t %s_zsort_faces[] PROGMEM = {  // z-sorted face index' % (
+        (len(faces) > 255) and 16 or 8, objname))
+    print(', '.join(map(str, z_sorted_idx)))
+    print('};\n')
+
 
 if __name__ == '__main__':
     ConvertObj(open(sys.argv[1]))
